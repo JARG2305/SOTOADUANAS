@@ -295,6 +295,7 @@
     </div>
 
     <!-- Script Principal Completo y Con Forzar Alertas -->
+    <!-- Script Principal Completo y Con Forzar Alertas Corregido -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
         import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
@@ -306,6 +307,14 @@
         let allRecords = [];
         let currentTab = 'activos';
         let subTabAlertaActual = 'operativas';
+
+        // Lista de campos requeridos para el formulario y guardado
+        const fieldsList = [
+            "modo_transporte", "num_expediente", "cliente", "proveedor", "linea",
+            "pais_origen", "buque_origen_vuelo", "awb_bl", "numero_contenedor",
+            "peso_bl", "contenido_segun_bl", "eta", "fecha_registro_dai",
+            "vencimiento_dai", "fecha_llegada", "despacho"
+        ];
 
         async function inicializarConfiguracion() {
             try {
@@ -328,47 +337,46 @@
         }
         inicializarConfiguracion();
 
-        // Función para forzar la ejecución de alertas desde el botón superior
-       window.forzarAlertasServidor = async function() {
-    // 1. Recopilar todas las alertas activas que se muestran en el contenedor web
-    const contenedorAlertas = document.getElementById("alertsContainer");
-    if (!contenedorAlertas || contenedorAlertas.children.length === 0 || contenedorAlertas.innerText.includes("No hay alertas")) {
-        alert("⚠️ No hay alertas activas en este momento para enviar.");
-        return;
-    }
+        // Función para forzar las alertas formateadas verticalmente con la fecha ETA al final
+        window.forzarAlertasServidor = async function() {
+            const contenedorAlertas = document.getElementById("alertsContainer");
+            if (!contenedorAlertas || contenedorAlertas.children.length === 0 || contenedorAlertas.innerText.includes("No hay alertas")) {
+                alert("⚠️ No hay alertas activas en este momento para enviar.");
+                return;
+            }
 
-    let textosAlertas = [];
-    Array.from(contenedorAlertas.children).forEach(div => {
-        if (div.innerText && !div.innerText.includes("No hay alertas")) {
-            textosAlertas.push("• " + div.innerText.trim());
+            let textosAlertas = [];
+            Array.from(contenedorAlertas.children).forEach(div => {
+                if (div.innerText && !div.innerText.includes("No hay alertas")) {
+                    textosAlertas.push("• " + div.innerText.trim());
+                }
+            });
+
+            if (textosAlertas.length === 0) {
+                alert("⚠️ No se encontraron alertas válidas para forzar.");
+                return;
+            }
+
+            const mensajeConsolidado = "🚨 **ALERTAS OPERATIVAS Y ETA - SOTO ADUANAS** (Forzado Manual)\n\n" + textosAlertas.join("\n\n");
+
+            if (!confirm(`¿Desea enviar ${textosAlertas.length} alerta(s) activa(s) del panel a Telegram ahora mismo?`)) return;
+
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/notificar`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mensaje: mensajeConsolidado })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    alert("✅ Alertas enviadas a Telegram con éxito.");
+                } else {
+                    alert("⚠️ Respuesta del servidor: " + (data.message || "Procesado con avisos"));
+                }
+            } catch (err) {
+                alert("❌ Error al conectar con el servidor: " + err.message);
+            }
         }
-    });
-
-    if (textosAlertas.length === 0) {
-        alert("⚠️ No se encontraron alertas válidas para forzar.");
-        return;
-    }
-
-    const mensajeConsolidado = "🚨 **ALERTAS OPERATIVAS Y ETA - SOTO ADUANAS** (Forzado Manual)\n\n" + textosAlertas.join("\n\n");
-
-    if (!confirm(`¿Desea enviar ${textosAlertas.length} alerta(s) activa(s) del panel a Telegram ahora mismo?`)) return;
-
-    try {
-        const res = await fetch(`${BACKEND_URL}/api/notificar`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mensaje: mensajeConsolidado })
-        });
-        const data = await res.json();
-        if (res.ok && data.success) {
-            alert("✅ Alertas enviadas a Telegram con éxito.");
-        } else {
-            alert("⚠️ Respuesta del servidor: " + (data.message || "Procesado con avisos"));
-        }
-    } catch (err) {
-        alert("❌ Error al conectar con el servidor: " + err.message);
-    }
-}
 
         window.maskFecha = function(input) {
             let v = input.value.replace(/\D/g, "");
@@ -451,22 +459,24 @@
                 const contRaw = (rec.numero_contenedor || "").trim();
                 let contenedoresList = contRaw ? contRaw.split(',').map(c => c.trim().toLowerCase()).filter(Boolean) : [];
 
+                const fechaEtaStr = rec.eta || 'S/N';
+
                 if (expVal) {
                     if (expSet.has(expVal)) {
-                        alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>❗ DUPLICADO:</b> Expediente <b>${rec.num_expediente}</b> repetido.` });
+                        alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>❗ EXPEDIENTE DUPLICADO:</b> Exp: <b>${rec.num_expediente}</b> | Estado: Repetido | 📅 ETA: <b>${fechaEtaStr}</b>` });
                     }
                     expSet.add(expVal);
                 }
                 if (blVal && blVal !== 's/n') {
                     if (blSet.has(blVal)) {
-                        alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>❗ DUPLICADO:</b> B/L o AWB <b>${rec.awb_bl}</b> repetido.` });
+                        alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>❗ B/L O AWB DUPLICADO:</b> BL: <b>${rec.awb_bl}</b> | Estado: Ya usado | 📅 ETA: <b>${fechaEtaStr}</b>` });
                     }
                     blSet.add(blVal);
                 }
 
                 contenedoresList.forEach(contVal => {
                     if (contSet.has(contVal)) {
-                        alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>❗ DUPLICADO:</b> Contenedor <b>${contVal.toUpperCase()}</b> repetido.` });
+                        alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>❗ CONTENEDOR DUPLICADO:</b> Contenedor: <b>${contVal.toUpperCase()}</b> | Estado: Repetido | 📅 ETA: <b>${fechaEtaStr}</b>` });
                     }
                     contSet.add(contVal);
                 });
@@ -475,7 +485,6 @@
 
                 const expName = rec.num_expediente || 'S/N';
                 const clientName = rec.cliente || 'S/C';
-                const fechaEtaStr = rec.eta || 'S/N';
 
                 if (rec.eta) {
                     const dEta = parseFechaLocal(rec.eta);
