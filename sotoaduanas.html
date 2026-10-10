@@ -11,7 +11,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
     <script>
-(function() {
+        (function() {
             const autorizado = sessionStorage.getItem("soto_auth");
             if (!autorizado) {
                 const clave = prompt("🔒 Acceso Restringido - Soto Aduanas:\nIngrese la clave de autorización:");
@@ -97,9 +97,7 @@
 
     <main class="max-w-7xl mx-auto px-4 py-6 space-y-6">
 
-        <!-- ======================================================= -->
-        <!-- SECCIÓN DE PESTAÑAS Y ALERTAS ORIGINALES RESTAURADA     -->
-        <!-- ======================================================= -->
+        <!-- Sección de Alertas Integrada -->
         <section id="alertsSection" class="space-y-4 mb-4 hidden">
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end border-b border-slate-300 gap-2 pb-2">
                 <div class="flex gap-1 overflow-x-auto items-end w-full sm:w-auto">
@@ -107,7 +105,7 @@
                         <span class="text-xs font-bold flex items-center gap-1">✈🚢 Alertas ETA</span>
                         <span id="count_alertasEta" class="text-xl font-black mt-0.5 text-blue-700">0</span>
                     </button>
-                    <button type="button" id="tab_alertasOpBtn" onclick="switchSubTagAlertas('operativas')" class="tab-btn px-4 font-bold rounded-t-lg bg-white border-t-2 border-x border-slate-300 text-red-700 shadow-sm transition min-w-[140px]">
+                    <button type="button" id="tab_alertasOpBtn" onclick="switchSubTabAlertas('operativas')" class="tab-btn px-4 font-bold rounded-t-lg bg-white border-t-2 border-x border-slate-300 text-red-700 shadow-sm transition min-w-[140px]">
                         <span class="text-xs font-bold flex items-center gap-1">🚨 Alertas Operativas</span>
                         <span id="count_alertasOp" class="text-xl font-black mt-0.5 text-red-600">0</span>
                     </button>
@@ -116,6 +114,16 @@
 
             <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 rounded-tl-none relative z-20 space-y-3">
                 <div id="alertsContainer" class="space-y-2 max-h-56 overflow-y-auto text-xs"></div>
+            </div>
+        </section>
+
+        <!-- Sección de Buscador -->
+        <section class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="w-full md:w-1/2">
+                <input type="text" id="searchInput" oninput="filterData()" placeholder="🔍 Búsqueda rápida (expediente, cliente, BL...)" class="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="flex items-center gap-3">
+                <span id="recordCount" class="text-xs font-semibold text-slate-500">0 registros</span>
             </div>
         </section>
 
@@ -282,7 +290,7 @@
         </div>
     </div>
 
-    <!-- Script Principal con Alertas Originales Íntegras -->
+    <!-- Script Principal Completo y Corregido -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
         import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
@@ -430,7 +438,7 @@
                 const clientName = rec.cliente || 'S/C';
                 const fechaEtaStr = rec.eta || 'S/N';
 
-                // Alerta ETA con su estructura clara
+                // Alerta ETA Próximo con ETA al final
                 if (rec.eta) {
                     const dEta = parseFechaLocal(rec.eta);
                     if (dEta) {
@@ -442,7 +450,7 @@
                     }
                 }
 
-                // Alerta DAI con el ETA al final
+                // Alerta DAI próxima a vencer o vencida con ETA al final
                 if (rec.vencimiento_dai) {
                     const dVenc = parseFechaLocal(rec.vencimiento_dai);
                     if (dVenc) {
@@ -483,8 +491,9 @@
         }
 
         window.filterData = function() {
-            const query = document.getElementById("searchInput").value.toLowerCase().trim();
+            const query = document.getElementById("searchInput")?.value.toLowerCase().trim() || "";
             const tbody = document.getElementById("dataTableBody");
+            if (!tbody) return;
             tbody.innerHTML = "";
 
             let activosCount = 0;
@@ -499,9 +508,13 @@
                 return matchesTab && matchesQuery;
             });
 
-            document.getElementById("count_activos").innerText = activosCount;
-            document.getElementById("count_despachados").innerText = despachadosCount;
-            document.getElementById("recordCount").innerText = `${filtered.length} registros mostrados`;
+            const elActivos = document.getElementById("count_activos");
+            const elDespachados = document.getElementById("count_despachados");
+            const elRecordCount = document.getElementById("recordCount");
+
+            if (elActivos) elActivos.innerText = activosCount;
+            if (elDespachados) elDespachados.innerText = despachadosCount;
+            if (elRecordCount) elRecordCount.innerText = `${filtered.length} registros mostrados`;
 
             if (filtered.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="17" class="text-center py-8 text-slate-400">No hay registros en esta vista.</td></tr>`;
