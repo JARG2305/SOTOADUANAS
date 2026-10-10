@@ -452,14 +452,6 @@ cron.schedule('0 9,12,15,18,19,20 * * *', async () => {
                 }
                 blSet.add(blVal);
             }
-            contenedoresList.forEach(async (contVal) => {
-                if (contSet.has(contVal)) {
-                    const msgDuplicadoCont = `❗ **CONTENEDOR DUPLICADO**\n• **Contenedor:** ${contVal.toUpperCase()}\n• **Estado:** Ya está registrado en otro expediente\n• **Fecha ETA:** ${fechaEtaStr}`;
-                    await enviarAlertaTelegramUnicaServidor(recIdUnico, `duplicado_cont_${contVal}`, msgDuplicadoCont);
-                    alertasEnviadasCount++;
-                }
-                contSet.add(contVal);
-            });
 
             if (rec.despacho) continue;
 
@@ -484,6 +476,28 @@ cron.schedule('0 9,12,15,18,19,20 * * *', async () => {
                 }
 
                 if (dArriboObj) {
+                    const diffLlegadaDays = Math.round((dArriboObj - today) / (1000 * 60 * 60 * 24));
+                    const maxDiasAnticipacion = esMaritimo ? 5 : 4;
+                    const minDiasAnticipacion = esMaritimo ? 2 : 1;
+
+                    if (diffLlegadaDays >= minDiasAnticipacion && diffLlegadaDays <= maxDiasAnticipacion) {
+                        const modoTexto = esMaritimo ? "MARÍTIMO" : "AÉREO";
+                        const txtTiempo = diffLlegadaDays === 0 ? "¡LLEGA HOY!" : `Faltan ${diffLlegadaDays}d`;
+                        const textTelegram = `🚢 **ETA PRÓXIMO (${modoTexto})**\n• **Exp:** ${expName}\n• **Cliente:** ${clientName}\n• **Tiempo:** ${txtTiempo}\n• **Fecha ETA:** ${fechaEtaStr}`;
+
+                        await enviarAlertaTelegramUnicaServidor(recIdUnico, 'cuenta_regresiva_eta', textTelegram);
+                        alertasEnviadasCount++;
+                    }
+
+                    const noTieneDai = !rec.fecha_registro_dai || rec.fecha_registro_dai.trim() === "";
+                    if (diffLlegadaDays <= maxDiasAnticipacion && noTieneDai) {
+                        const textTelegramDai = `⚠️ **FALTA REGISTRAR DAI**\n• **Exp:** ${expName}\n• **Cliente:** ${clientName}\n• **Detalle:** Arribo cercano sin registro DAI\n• **Fecha ETA:** ${fechaEtaStr}`;
+
+                        await enviarAlertaTelegramUnicaServidor(recIdUnico, 'falta_reg_dai', textTelegramDai);
+                        alertasEnviadasCount++;
+                    }
+                }
+            }                if (dArriboObj) {
                     const diffLlegadaDays = Math.round((dArriboObj - today) / (1000 * 60 * 60 * 24));
                     const maxDiasAnticipacion = esMaritimo ? 5 : 4;
                     const minDiasAnticipacion = esMaritimo ? 2 : 1;
