@@ -85,6 +85,9 @@
 
             <!-- Botones de Acción -->
             <div class="flex items-center gap-3">
+                <button type="button" onclick="forzarAlertasServidor()" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow" title="Disparar alertas manualmente en el servidor">
+                    ⚡ Forzar Alertas
+                </button>
                 <button type="button" onclick="openModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow">
                     ➕ Nuevo Expediente
                 </button>
@@ -97,7 +100,7 @@
 
     <main class="max-w-7xl mx-auto px-4 py-6 space-y-6">
 
-        <!-- Sección de Alertas Integrada -->
+        <!-- Sección de Alertas Íntegra -->
         <section id="alertsSection" class="space-y-4 mb-4 hidden">
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end border-b border-slate-300 gap-2 pb-2">
                 <div class="flex gap-1 overflow-x-auto items-end w-full sm:w-auto">
@@ -290,7 +293,7 @@
         </div>
     </div>
 
-    <!-- Script Principal Completo y Corregido -->
+    <!-- Script Principal Completo y Con Forzar Alertas -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
         import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
@@ -323,6 +326,22 @@
             }
         }
         inicializarConfiguracion();
+
+        // Función para forzar la ejecución de alertas desde el botón superior
+        window.forzarAlertasServidor = async function() {
+            if (!confirm("¿Desea forzar el envío de las alertas del sistema (correos y Telegram) ahora mismo?")) return;
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/forzar-alertas`, { method: 'POST' });
+                const data = await res.json();
+                if (res.ok) {
+                    alert("✅ Alertas ejecutadas y procesadas correctamente por el servidor.");
+                } else {
+                    alert("⚠️ Respuesta del servidor: " + (data.error || "Procesado con avisos"));
+                }
+            } catch (err) {
+                alert("❌ Error al conectar con el servidor para forzar las alertas: " + err.message);
+            }
+        }
 
         const fieldsList = [
             "modo_transporte", "num_expediente", "cliente", "proveedor", "linea", 
@@ -438,7 +457,6 @@
                 const clientName = rec.cliente || 'S/C';
                 const fechaEtaStr = rec.eta || 'S/N';
 
-                // Alerta ETA Próximo con ETA al final
                 if (rec.eta) {
                     const dEta = parseFechaLocal(rec.eta);
                     if (dEta) {
@@ -450,7 +468,6 @@
                     }
                 }
 
-                // Alerta DAI próxima a vencer o vencida con ETA al final
                 if (rec.vencimiento_dai) {
                     const dVenc = parseFechaLocal(rec.vencimiento_dai);
                     if (dVenc) {
