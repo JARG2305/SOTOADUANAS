@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>LOGISTATUS PRO - Vista Ejecutiva Esencial</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+    <script>
+(function() {
+            const autorizado = sessionStorage.getItem("soto_auth");
+            if (!autorizado) {
+                const clave = prompt("🔒 Acceso Restringido - Soto Aduanas:\nIngrese la clave de autorización:");
+                if (clave === "soto2026") {
+                    sessionStorage.setItem("soto_auth", "true");
+                } else {
+                    alert("Acceso denegado.");
+                    document.body.innerHTML = "<h2 style='text-align:center; margin-top:20vh; font-family:sans-serif; color:red;'>🔒 Acceso Restringido. Soto Aduanas.</h2>";
+                    throw new Error("No autorizado");
+                }
+            }
+        })();
+
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        navy: { 800: '#1e3a8a', 900: '#0f172a' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .table-compact th {
+            white-space: normal !important;
+            line-height: 1.15;
+            padding-top: 8px !important;
+            padding-bottom: 8px !important;
+            text-align: center;
+            vertical-align: middle;
+            height: 42px;
+        }
+        .table-compact td {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .col-exp { width: 95px !important; min-width: 95px !important; max-width: 95px !important; text-align: center; }
+        .col-despacho { width: 110px !important; min-width: 110px !important; max-width: 110px !important; text-align: center; }
+        
+        .tab-btn {
+            height: 60px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans antialiased">
+
+    <!-- Header Principal -->
+    <header class="bg-navy-900 text-white shadow-lg sticky top-0 z-40 border-b border-blue-900/50">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col md:flex-row justify-between items-center gap-4">
+            
+            <div class="flex items-center gap-4 bg-slate-950/80 border border-blue-500/40 px-5 py-2.5 rounded-2xl shadow">
+                <div class="flex items-center justify-center w-11 h-11 rounded-xl bg-gradient-to-tr from-blue-700 via-indigo-600 to-cyan-500 text-white font-black">
+                    LP
+                </div>
+                <div class="flex flex-col">
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-xl font-black tracking-wider text-white">
+                            LOGI<span class="text-cyan-400">STATUS</span>
+                        </span>
+                        <span class="text-[9px] font-black px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/40">LITE</span>
+                    </div>
+                    <span class="text-[9px] text-slate-300 tracking-[0.15em] uppercase font-bold">Vista Ejecutiva Esencial</span>
+                </div>
+            </div>
+
+            <!-- Botones de Acción -->
+            <div class="flex items-center gap-3">
+                <button type="button" onclick="openModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow">
+                    ➕ Nuevo Expediente
+                </button>
+                <button type="button" onclick="openArchiveModal()" class="bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 px-4 py-2.5 rounded-xl text-xs font-bold transition shadow">
+                    📁 Archivo Histórico
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 py-6 space-y-6">
+
+        <!-- ======================================================= -->
+        <!-- SECCIÓN DE PESTAÑAS Y ALERTAS ORIGINALES RESTAURADA     -->
+        <!-- ======================================================= -->
+        <section id="alertsSection" class="space-y-4 mb-4 hidden">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end border-b border-slate-300 gap-2 pb-2">
+                <div class="flex gap-1 overflow-x-auto items-end w-full sm:w-auto">
+                    <button type="button" id="tab_alertasEtaBtn" onclick="switchSubTabAlertas('eta')" class="tab-btn px-4 font-bold rounded-t-lg bg-slate-200 text-slate-600 hover:bg-slate-300 transition min-w-[140px]">
+                        <span class="text-xs font-bold flex items-center gap-1">✈🚢 Alertas ETA</span>
+                        <span id="count_alertasEta" class="text-xl font-black mt-0.5 text-blue-700">0</span>
+                    </button>
+                    <button type="button" id="tab_alertasOpBtn" onclick="switchSubTabAlertas('operativas')" class="tab-btn px-4 font-bold rounded-t-lg bg-white border-t-2 border-x border-slate-300 text-red-700 shadow-sm transition min-w-[140px]">
+                        <span class="text-xs font-bold flex items-center gap-1">🚨 Alertas Operativas</span>
+                        <span id="count_alertasOp" class="text-xl font-black mt-0.5 text-red-600">0</span>
+                    </button>
+                    <button type="button" id="tab_alertasAlmBtn" onclick="switchSubTabAlertas('almacen')" class="tab-btn px-4 font-bold rounded-t-lg bg-slate-200 text-slate-600 hover:bg-slate-300 transition min-w-[140px]">
+                        <span class="text-xs font-bold flex items-center gap-1">🗄 Vencimiento Almacén y Demoras</span>
+                        <span id="count_alertasAlm" class="text-xl font-black mt-0.5 text-amber-600">0</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 rounded-tl-none relative z-20 space-y-3">
+                <div id="alertsContainer" class="space-y-2 max-h-56 overflow-y-auto text-xs"></div>
+            </div>
+        </section>
+
+        <!-- Sección de Buscador -->
+        <section class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="w-full md:w-1/2">
+                <input type="text" id="searchInput" oninput="filterData()" placeholder="🔍 Búsqueda rápida (expediente, cliente, BL...)" class="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="flex items-center gap-3">
+                <span id="recordCount" class="text-xs font-semibold text-slate-500">0 registros</span>
+            </div>
+        </section>
+
+        <!-- Pestañas Principales -->
+        <div class="flex border-b border-slate-300 gap-1 overflow-x-auto items-end">
+            <button type="button" id="tab_activosBtn" onclick="switchTab('activos')" class="tab-btn px-6 py-3 font-bold rounded-t-lg bg-white border-t-2 border-x border-slate-300 text-blue-700 shadow-sm transition">
+                ⚡ Exp. Activos <span id="count_activos">0</span>
+            </button>
+            <button type="button" id="tab_despachadosBtn" onclick="switchTab('despachados')" class="tab-btn px-6 py-3 font-bold rounded-t-lg bg-slate-200 text-slate-600 hover:bg-slate-300 transition">
+                ✅ Despachados <span id="count_despachados">0</span>
+            </button>
+        </div>
+
+        <!-- Tabla Principal -->
+        <section class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden -mt-6 rounded-tl-none relative z-20">
+            <div class="overflow-x-auto max-h-[600px] bg-white">
+                <table class="w-full text-left border-collapse text-xs whitespace-nowrap table-compact bg-white">
+                    <thead class="bg-slate-700 text-white font-bold sticky top-0 z-30">
+                        <tr>
+                            <th class="p-3 text-center">Acciones</th>
+                            <th class="p-3">Modo Vía</th>
+                            <th class="p-3 col-exp">N.º Exp</th>
+                            <th class="p-3">Cliente</th>
+                            <th class="p-3">Proveedor</th>
+                            <th class="p-3">Línea</th>
+                            <th class="p-3">País Origen</th>
+                            <th class="p-3">Buque / Vuelo Origen</th>
+                            <th class="p-3">AWB / BL</th>
+                            <th class="p-3">N.º Contenedor(es)</th>
+                            <th class="p-3">Peso BL (Kg)</th>
+                            <th class="p-3">Contenido según BL</th>
+                            <th class="p-3 bg-cyan-900">ETA</th>
+                            <th class="p-3 bg-amber-900">Fecha DAI</th>
+                            <th class="p-3 bg-indigo-900">Vencimiento DAI</th>
+                            <th class="p-3 bg-blue-900">Fecha de Llegada</th>
+                            <th class="p-3 bg-emerald-900 col-despacho">Fecha Despacho</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dataTableBody" class="divide-y divide-slate-200 bg-white">
+                        <!-- Dinámico -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Modal Formulario Esencial -->
+    <div id="expModal" class="fixed inset-0 bg-black/60 z-50 hidden flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[92vh] flex flex-col my-auto">
+            
+            <div class="bg-navy-900 text-white p-4 flex justify-between items-center rounded-t-2xl shrink-0">
+                <h3 id="modalTitle" class="font-bold text-lg">Registrar Expediente</h3>
+                <button type="button" onclick="closeModal()" class="text-slate-300 hover:text-white text-2xl font-bold px-2">&times;</button>
+            </div>
+
+            <form id="expForm" onsubmit="saveExp(event)" class="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
+                <input type="hidden" id="recordId">
+            
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Modo de Transporte *</label>
+                        <select id="modo_transporte" required class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white font-bold text-blue-900">
+                            <option value="Marítimo">🚢 Marítimo</option>
+                            <option value="Aéreo">✈️ Aéreo</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">N.º Exp *</label>
+                        <input type="text" id="num_expediente" required class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Cliente *</label>
+                        <input type="text" id="cliente" required class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Proveedor</label>
+                        <input type="text" id="proveedor" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Línea</label>
+                        <input type="text" id="linea" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">País Origen *</label>
+                        <input type="text" id="pais_origen" required class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Buque / Vuelo Origen *</label>
+                        <input type="text" id="buque_origen_vuelo" required class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">AWB / BL *</label>
+                        <input type="text" id="awb_bl" required class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">N.º Contenedor(es)</label>
+                        <input type="text" id="numero_contenedor" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Peso BL (Kg)</label>
+                        <input type="number" step="0.01" id="peso_bl" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Contenido según BL</label>
+                        <input type="text" id="contenido_segun_bl" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-cyan-700 mb-1">ETA</label>
+                        <input type="text" id="eta" placeholder="DD/MM/AAAA" maxlength="10" oninput="maskFecha(this)" onblur="validarFechaCompleta(this)" class="w-full px-3 py-2 border border-cyan-300 rounded-lg text-sm bg-cyan-50">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-amber-700 mb-1">Fecha DAI</label>
+                        <input type="text" id="fecha_registro_dai" placeholder="DD/MM/AAAA" maxlength="10" oninput="maskFecha(this); calcularVencimientoDAI();" onblur="validarFechaCompleta(this)" class="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm bg-amber-50">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-indigo-700 mb-1">Vencimiento DAI (+15d)</label>
+                        <input type="text" id="vencimiento_dai" placeholder="DD/MM/AAAA" maxlength="10" readonly class="w-full px-3 py-2 border border-indigo-300 rounded-lg text-sm bg-indigo-50">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-blue-700 mb-1">Fecha de Llegada</label>
+                        <input type="text" id="fecha_llegada" placeholder="DD/MM/AAAA" maxlength="10" oninput="maskFecha(this)" onblur="validarFechaCompleta(this)" class="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm bg-blue-50">
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-semibold text-emerald-700 mb-1">Fecha de Despacho (Archiva)</label>
+                        <input type="text" id="despacho" placeholder="DD/MM/AAAA" maxlength="10" oninput="maskFecha(this)" onblur="validarFechaCompleta(this)" class="w-full px-3 py-2 border border-emerald-300 rounded-lg text-sm bg-emerald-50">
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-2 pt-4 border-t">
+                    <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 rounded-lg text-xs font-bold">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL DE ARCHIVO HISTÓRICO -->
+    <div id="archiveModal" class="fixed inset-0 bg-black/60 z-50 hidden flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col my-auto">
+            <div class="bg-navy-900 text-white p-4 flex justify-between items-center rounded-t-2xl">
+                <h3 class="font-bold text-lg">📁 Archivo Histórico (Expedientes Despachados)</h3>
+                <button type="button" onclick="closeArchiveModal()" class="text-slate-300 hover:text-white text-2xl font-bold px-2">&times;</button>
+            </div>
+            <div class="p-4 flex-1 overflow-y-auto space-y-4">
+                <div class="overflow-x-auto max-h-[480px]">
+                    <table class="w-full text-left border-collapse text-xs whitespace-nowrap table-compact bg-white">
+                        <thead class="bg-slate-700 text-white font-bold sticky top-0 z-30">
+                            <tr>
+                                <th class="p-3">Acciones</th>
+                                <th class="p-3 col-exp">N.º Exp</th>
+                                <th class="p-3">Cliente</th>
+                                <th class="p-3">BL / AWB</th>
+                                <th class="p-3">ETA</th>
+                                <th class="p-3">Llegada</th>
+                                <th class="p-3 col-despacho">Despacho</th>
+                            </tr>
+                        </thead>
+                        <tbody id="archiveTableBody" class="divide-y divide-slate-200"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Principal con Alertas Originales Íntegras -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+
+        const BACKEND_URL = window.location.origin;
+        let db;
+        const COLLECTION_NAME = "expedientes_lite";
+
+        let allRecords = [];
+        let currentTab = 'activos';
+        let subTabAlertaActual = 'operativas';
+
+        async function inicializarConfiguracion() {
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/config`);
+                const config = await response.json();
+
+                const firebaseConfig = {
+                    apiKey: config.firebaseApiKey,
+                    projectId: config.firebaseProjectId,
+                    authDomain: `${config.firebaseProjectId}.firebaseapp.com`,
+                    storageBucket: `${config.firebaseProjectId}.firebasestorage.app`
+                };
+
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                initCloudDB();
+            } catch (err) {
+                console.error("Error al conectar con el servidor:", err);
+            }
+        }
+        inicializarConfiguracion();
+
+        const fieldsList = [
+            "modo_transporte", "num_expediente", "cliente", "proveedor", "linea", 
+            "pais_origen", "buque_origen_vuelo", "awb_bl", "numero_contenedor", 
+            "peso_bl", "contenido_segun_bl", "eta", "fecha_registro_dai", 
+            "vencimiento_dai", "fecha_llegada", "despacho"
+        ];
+
+        window.maskFecha = function(input) {
+            let v = input.value.replace(/\D/g, "");
+            if (v.length > 2) v = v.substring(0, 2) + "/" + v.substring(2);
+            if (v.length > 5) v = v.substring(0, 5) + "/" + v.substring(5, 9);
+            input.value = v;
+        }
+
+        window.validarFechaCompleta = function(input) {
+            let v = input.value.trim();
+            if (v !== "" && v.length < 10) {
+                alert("⚠️ La fecha está incompleta. Debe tener el formato completo DD/MM/AAAA.");
+                input.value = "";
+                input.focus();
+            }
+        }
+
+        window.calcularVencimientoDAI = function() {
+            const valReg = document.getElementById("fecha_registro_dai").value.trim();
+            if (!valReg || valReg.length !== 10) return;
+            const p = valReg.split('/');
+            let dReg = new Date(p[2], p[1] - 1, p[0]);
+            dReg.setDate(dReg.getDate() + 15);
+            let dd = String(dReg.getDate()).padStart(2, '0');
+            let mm = String(dReg.getMonth() + 1).padStart(2, '0');
+            let yy = dReg.getFullYear();
+            document.getElementById("vencimiento_dai").value = `${dd}/${mm}/${yy}`;
+        }
+
+        function parseFechaLocal(str) {
+            if (!str) return null;
+            str = String(str).trim();
+            if (!str.includes('/')) return null;
+            const p = str.split('/');
+            if (p.length !== 3) return null;
+            return new Date(parseInt(p[2], 10), parseInt(p[1], 10) - 1, parseInt(p[0], 10));
+        }
+
+        function initCloudDB() {
+            onSnapshot(collection(db, COLLECTION_NAME), (snapshot) => {
+                allRecords = [];
+                snapshot.forEach((docSnap) => {
+                    allRecords.push({ id: docSnap.id, ...docSnap.data() });
+                });
+                filterData();
+                checkAlerts(allRecords);
+            });
+        }
+
+        window.switchTab = function(tabName) {
+            currentTab = tabName;
+            document.getElementById("tab_activosBtn").className = "tab-btn px-6 py-3 font-bold rounded-t-lg " + (tabName === 'activos' ? "bg-white border-t-2 border-x border-slate-300 text-blue-700 shadow-sm" : "bg-slate-200 text-slate-600 hover:bg-slate-300") + " transition";
+            document.getElementById("tab_despachadosBtn").className = "tab-btn px-6 py-3 font-bold rounded-t-lg " + (tabName === 'despachados' ? "bg-white border-t-2 border-x border-slate-300 text-blue-700 shadow-sm" : "bg-slate-200 text-slate-600 hover:bg-slate-300") + " transition";
+            filterData();
+        }
+
+        window.switchSubTabAlertas = function(tipo) {
+            subTabAlertaActual = tipo;
+            document.getElementById("tab_alertasEtaBtn").className = "tab-btn px-4 font-bold rounded-t-lg " + (tipo === 'eta' ? "bg-white border-t-2 border-x border-slate-300 text-blue-700 shadow-sm" : "bg-slate-200 text-slate-600 hover:bg-slate-300") + " transition min-w-[140px]";
+            document.getElementById("tab_alertasOpBtn").className = "tab-btn px-4 font-bold rounded-t-lg " + (tipo === 'operativas' ? "bg-white border-t-2 border-x border-slate-300 text-red-700 shadow-sm" : "bg-slate-200 text-slate-600 hover:bg-slate-300") + " transition min-w-[140px]";
+            document.getElementById("tab_alertasAlmBtn").className = "tab-btn px-4 font-bold rounded-t-lg " + (tipo === 'almacen' ? "bg-white border-t-2 border-x border-slate-300 text-amber-700 shadow-sm" : "bg-slate-200 text-slate-600 hover:bg-slate-300") + " transition min-w-[140px]";
+            checkAlerts(allRecords);
+        }
+
+        function checkAlerts(data) {
+            const container = document.getElementById("alertsContainer");
+            const section = document.getElementById("alertsSection");
+            if (!container || !section) return;
+            container.innerHTML = "";
+            let alertsList = [];
+            const today = new Date();
+            today.setHours(0,0,0,0);
+
+            let expSet = new Set();
+            let blSet = new Set();
+            let contSet = new Set();
+
+            data.forEach(rec => {
+                const expVal = (rec.num_expediente || "").trim().toLowerCase();
+                const blVal = (rec.awb_bl || "").trim().toLowerCase();
+                const contRaw = (rec.numero_contenedor || "").trim();
+                let contenedoresList = contRaw ? contRaw.split(',').map(c => c.trim().toLowerCase()).filter(Boolean) : [];
+
+                if (expVal) {
+                    if (expSet.has(expVal)) {
+                        alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>❗ DUPLICADO:</b> Expediente <b>${rec.num_expediente}</b> repetido.` });
+                    }
+                    expSet.add(expVal);
+                }
+                if (blVal && blVal !== 's/n') {
+                    if (blSet.has(blVal)) {
+                        alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>❗ DUPLICADO:</b> B/L o AWB <b>${rec.awb_bl}</b> repetido.` });
+                    }
+                    blSet.add(blVal);
+                }
+
+                contenedoresList.forEach(contVal => {
+                    if (contSet.has(contVal)) {
+                        alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>❗ DUPLICADO:</b> Contenedor <b>${contVal.toUpperCase()}</b> repetido.` });
+                    }
+                    contSet.add(contVal);
+                });
+
+                if (rec.despacho) return;
+
+                const expName = rec.num_expediente || 'S/N';
+                const clientName = rec.cliente || 'S/C';
+
+                if (rec.eta) {
+                    const dEta = parseFechaLocal(rec.eta);
+                    if (dEta) {
+                        const diffDays = Math.round((dEta - today) / (1000 * 60 * 60 * 24));
+                        if (diffDays >= 0 && diffDays <= 5) {
+                            const txt = diffDays === 0 ? "¡LLEGA HOY!" : `Faltan ${diffDays}d`;
+                            alertsList.push({ categoria: 'eta', type: 'warning', text: `<b>🚢 ETA PRÓXIMO:</b> Exp: <b>${expName}</b> | Cliente: <b>${clientName}</b> | ⏳ ${txt} (${rec.eta})` });
+                        }
+                    }
+                }
+
+                if (rec.vencimiento_dai) {
+                    const dVenc = parseFechaLocal(rec.vencimiento_dai);
+                    if (dVenc) {
+                        const diffVenc = Math.round((dVenc - today) / (1000 * 60 * 60 * 24));
+                        if (diffVenc >= 0 && diffVenc <= 4) {
+                            const txtVenc = diffVenc === 0 ? "¡VENCE HOY!" : `Faltan ${diffVenc}d`;
+                            alertsList.push({ categoria: 'almacen', type: 'warning', text: `<b>⚠️ DAI PRÓXIMA A VENCER:</b> Exp: <b>${expName}</b> | Cliente: <b>${clientName}</b> | ⏳ ${txtVenc} (${rec.vencimiento_dai})` });
+                        } else if (diffVenc < 0) {
+                            alertsList.push({ categoria: 'almacen', type: 'danger', text: `<b>🚨 DAI VENCIDA:</b> Exp: <b>${expName}</b> | Cliente: <b>${clientName}</b> | ⚠️ Venció el ${rec.vencimiento_dai}` });
+                        }
+                    }
+                }
+            });
+
+            let filtradas = alertsList.filter(a => {
+                if (subTabAlertaActual === 'eta') return a.categoria === 'eta';
+                if (subTabAlertaActual === 'almacen') return a.categoria === 'almacen';
+                return a.categoria === 'operativa';
+            });
+
+            document.getElementById("count_alertasEta").innerText = alertsList.filter(a => a.categoria === 'eta').length;
+            document.getElementById("count_alertasOp").innerText = alertsList.filter(a => a.categoria === 'operativa').length;
+            document.getElementById("count_alertasAlm").innerText = alertsList.filter(a => a.categoria === 'almacen').length;
+
+            if (alertsList.length > 0) {
+                section.classList.remove("hidden");
+                if (filtradas.length > 0) {
+                    filtradas.forEach(alert => {
+                        const div = document.createElement("div");
+                        div.className = `p-2.5 rounded-lg border flex items-center justify-between gap-2 text-xs ${alert.type === 'danger' ? 'bg-red-50 border-red-200 text-red-700 font-semibold' : 'bg-amber-50 border-amber-200 text-amber-800'}`;
+                        div.innerHTML = `<span>${alert.text}</span>`;
+                        container.appendChild(div);
+                    });
+                } else {
+                    container.innerHTML = `<div class="text-center py-3 text-slate-400">No hay alertas activas en esta categoría.</div>`;
+                }
+            } else {
+                section.classList.add("hidden");
+            }
+        }
+
+        window.filterData = function() {
+            const query = document.getElementById("searchInput").value.toLowerCase().trim();
+            const tbody = document.getElementById("dataTableBody");
+            tbody.innerHTML = "";
+
+            let activosCount = 0;
+            let despachadosCount = 0;
+
+            const filtered = allRecords.filter(r => {
+                const hasDespacho = Boolean(r.despacho && r.despacho.trim() !== "");
+                if (hasDespacho) despachadosCount++; else activosCount++;
+
+                const matchesTab = currentTab === 'despachados' ? hasDespacho : !hasDespacho;
+                const matchesQuery = query === "" || Object.values(r).some(val => String(val).toLowerCase().includes(query));
+                return matchesTab && matchesQuery;
+            });
+
+            document.getElementById("count_activos").innerText = activosCount;
+            document.getElementById("count_despachados").innerText = despachadosCount;
+            document.getElementById("recordCount").innerText = `${filtered.length} registros mostrados`;
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="17" class="text-center py-8 text-slate-400">No hay registros en esta vista.</td></tr>`;
+                return;
+            }
+
+            filtered.forEach(rec => {
+                const tr = document.createElement("tr");
+                tr.className = "hover:bg-slate-50 transition";
+                tr.innerHTML = `
+                    <td class="p-3 text-center">
+                        <button type="button" onclick="editRecord('${rec.id}')" class="text-blue-600 font-bold mr-2" title="Editar">✏️</button>
+                        <button type="button" onclick="deleteRecord('${rec.id}')" class="text-red-600 font-bold" title="Eliminar">🗑️</button>
+                    </td>
+                    <td class="p-3 font-bold text-center">${rec.modo_transporte || ''}</td>
+                    <td class="p-3 font-semibold col-exp">${rec.num_expediente || ''}</td>
+                    <td class="p-3">${rec.cliente || ''}</td>
+                    <td class="p-3">${rec.proveedor || ''}</td>
+                    <td class="p-3">${rec.linea || ''}</td>
+                    <td class="p-3">${rec.pais_origen || ''}</td>
+                    <td class="p-3">${rec.buque_origen_vuelo || ''}</td>
+                    <td class="p-3">${rec.awb_bl || ''}</td>
+                    <td class="p-3">${rec.numero_contenedor || ''}</td>
+                    <td class="p-3">${rec.peso_bl ? Number(rec.peso_bl).toFixed(2) : ''}</td>
+                    <td class="p-3">${rec.contenido_segun_bl || ''}</td>
+                    <td class="p-3 font-semibold text-cyan-800 bg-cyan-50/50">${rec.eta || ''}</td>
+                    <td class="p-3 font-semibold text-amber-800 bg-amber-50/50">${rec.fecha_registro_dai || ''}</td>
+                    <td class="p-3 font-semibold text-indigo-800 bg-indigo-50/50">${rec.vencimiento_dai || ''}</td>
+                    <td class="p-3 font-semibold text-blue-800 bg-blue-50/50">${rec.fecha_llegada || ''}</td>
+                    <td class="p-3 font-semibold text-emerald-800 bg-emerald-50/50 col-despacho">${rec.despacho || ''}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        window.openModal = function(record = null) {
+            document.getElementById("expModal").classList.remove("hidden");
+            if (record) {
+                document.getElementById("modalTitle").innerText = "Editar Expediente";
+                document.getElementById("recordId").value = record.id;
+                fieldsList.forEach(f => {
+                    const el = document.getElementById(f);
+                    if (el) el.value = record[f] !== undefined ? record[f] : "";
+                });
+            } else {
+                document.getElementById("modalTitle").innerText = "Registrar Nuevo Expediente";
+                document.getElementById("expForm").reset();
+                document.getElementById("recordId").value = "";
+                document.getElementById("modo_transporte").value = "Marítimo";
+            }
+        }
+
+        window.closeModal = function() { document.getElementById("expModal").classList.add("hidden"); }
+
+        window.saveExp = async function(e) {
+            e.preventDefault();
+            const idVal = document.getElementById("recordId").value;
+            const record = {};
+            fieldsList.forEach(f => { record[f] = document.getElementById(f)?.value.trim() || ""; });
+
+            try {
+                if (idVal) {
+                    await updateDoc(doc(db, COLLECTION_NAME, idVal), record);
+                } else {
+                    await addDoc(collection(db, COLLECTION_NAME), record);
+                }
+                closeModal();
+            } catch (err) {
+                alert("Error al guardar: " + err.message);
+            }
+        }
+
+        window.editRecord = function(id) {
+            const rec = allRecords.find(r => r.id === id);
+            if (rec) openModal(rec);
+        }
+
+        window.deleteRecord = async function(id) {
+            if (confirm("¿Eliminar expediente?")) await deleteDoc(doc(db, COLLECTION_NAME, id));
+        }
+
+        window.openArchiveModal = function() {
+            document.getElementById("archiveModal").classList.remove("hidden");
+            const tbody = document.getElementById("archiveTableBody");
+            tbody.innerHTML = "";
+            const despachados = allRecords.filter(r => r.despacho && r.despacho.trim() !== "");
+            
+            if (despachados.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-slate-400">No hay expedientes en el archivo histórico.</td></tr>`;
+                return;
+            }
+
+            despachados.forEach(rec => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td class="p-3"><button type="button" onclick="editRecord('${rec.id}'); closeArchiveModal();" class="bg-amber-600 text-white px-2.5 py-1 rounded text-xs font-bold">Editar</button></td>
+                    <td class="p-3 font-bold col-exp">${rec.num_expediente}</td>
+                    <td class="p-3">${rec.cliente}</td>
+                    <td class="p-3">${rec.awb_bl}</td>
+                    <td class="p-3">${rec.eta || ''}</td>
+                    <td class="p-3">${rec.fecha_llegada || ''}</td>
+                    <td class="p-3 text-emerald-700 font-bold col-despacho">${rec.despacho}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+        window.closeArchiveModal = function() { document.getElementById("archiveModal").classList.add("hidden"); }
+    </script>
+</body>
+</html>
