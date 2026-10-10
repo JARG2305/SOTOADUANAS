@@ -12,7 +12,15 @@ const cron = require('node-cron');
 // ==========================================
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+const path = require('path');
+
+// 1. Permite que el servidor lea los archivos estáticos
 app.use(express.static(path.join(__dirname)));
+
+// 2. Hace que la ruta principal abra tu archivo HTML exacto
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'sotoaduanas.html'));
+});
 
 // Credenciales y configuraciones desde variables de entorno
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -45,10 +53,6 @@ app.get('/api/config', (req, res) => {
     });
 });
 
-// Ruta raíz para que UptimeRobot detecte el servidor encendido
-app.get('/', (req, res) => {
-    res.status(200).send('LOGISTATUS PRO - Servidor Activo OK');
-});
 
 // ==========================================
 // 2. FUNCIONES DE SERVICIO (CORREO, TELEGRAM Y FIRESTORE)
