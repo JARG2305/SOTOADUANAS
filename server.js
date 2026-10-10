@@ -118,12 +118,16 @@ async function enviarCorreoSistema(opcionesMail) {
 async function enviarAlertaTelegramServidor(mensajeTexto) {
     try {
         const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+        
+        // Aseguramos que los saltos de línea se interpreten correctamente
+        const textoLimpio = mensajeTexto.replace(/\\n/g, '\n');
+
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 chat_id: TELEGRAM_CHAT_ID,
-                text: mensajeTexto,
+                text: textoLimpio,
                 parse_mode: 'Markdown'
             })
         });
