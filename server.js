@@ -176,12 +176,6 @@ function parseFechaLocalServidor(str) {
     return null;
 }
 
-function identificarEsMaritimoServidor(rec = {}) {
-    const modo = (rec.modo_transporte || "").toLowerCase();
-    if (modo.includes("aéreo") || modo.includes("aereo")) return false;
-    return true;
-}
-
 // ==========================================
 // 3. RUTAS DE LA API
 // ==========================================
@@ -237,17 +231,11 @@ cron.schedule('0 10,18 * * *', async () => {
     console.log("⏰ [CRON] Ejecutando generación y envío automático...");
     try {
         const correoCliente = process.env.CORREO_DESTINATARIO_AUTOMATICO;
-        if (!correoCliente) {
-            console.log("⚠️ [CRON] No hay un CORREO_DESTINATARIO_AUTOMATICO configurado para este servicio.");
-            return;
-        }
+        if (!correoCliente) return;
         const destinatariosAutomaticos = [correoCliente];
         
         const records = await obtenerExpedientesFirestore();
-        if (!records || records.length === 0) {
-            console.log("⚠️ [CRON] No hay registros en Firestore para generar el reporte automático.");
-            return;
-        }
+        if (!records || records.length === 0) return;
 
         const excelHeaders = [
             "MODO VÍA", "N.º EXPEDIENTE", "CLIENTE", "PROVEEDOR", "LÍNEA", "PAÍS ORIGEN", "BUQUE / VUELO ORIGEN", "AWB / BL", "N.º CONTENEDOR(ES)", "PESO BL", "CONTENIDO SEGÚN BL", "ETD ORIGEN", "PUERTO TRANSBORDO", "ETA TRANSBORDO", "ETD TRANSBORDO", "BUQUE / VUELO A VE", "ETA LA GUAIRA", "FECHA DE LLEGADA", "RECIBIDA ACTA RECEPCIÓN", "FECHA ABANDONO LEGAL", "PERMISOLOGÍA", "FECHA RECIBIDO PERMISOLOGÍA", "REGISTRO DAI", "FECHA REGISTRO DAI", "VENCIMIENTO DAI", "PREVALORACIÓN ENVIADA", "DOC. VALORADO EN SISTEMA", "FACTURA RECIBIDA", "MONTO FLETE", "RECIBIDO DOC. TRANSPORTE", "FECHA TRANSMISIÓN", "CANAL", "FUNCIONARIO", "RECONOCIMIENTO", "VALIDACIÓN", "DESPACHO", "ALMACÉN", "RECIBIDA ACTA (ALMACÉN)", "DÍAS LIBRES ALMACÉN", "INICIO DÍAS LIBRES ALMACÉN", "CULMINACIÓN DÍAS LIBRES ALMACÉN", "NAVIERA", "DÍAS LIBRES NAVIERA", "INICIO DÍAS LIBRES NAVIERA", "CULMINACIÓN DÍAS LIBRES NAVIERA", "OBSERVACIONES"
@@ -279,9 +267,7 @@ cron.schedule('0 10,18 * * *', async () => {
         };
 
         const buildRowsServidor = (listaRecs) => {
-            return listaRecs.map(rec => {
-                return fieldsList.map(f => rec[f] !== undefined && rec[f] !== null ? rec[f] : "");
-            });
+            return listaRecs.map(rec => fieldsList.map(f => rec[f] !== undefined && rec[f] !== null ? rec[f] : ""));
         };
 
         const ordenarPorETA = (lista) => {
@@ -317,10 +303,8 @@ cron.schedule('0 10,18 * * *', async () => {
 
         const wb = XLSX.utils.book_new();
         const wsMaster = XLSX.utils.aoa_to_sheet(masterRows);
-        
         const range = XLSX.utils.decode_range(wsMaster['!ref']);
         wsMaster['!cols'] = anchosEspecificosXLSX.map(w => ({ wch: w }));
-        wsMaster['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: range.e.r, c: range.e.c } }) };
 
         let currentSection = 1;
         for (let R = range.s.r; R <= range.e.r; ++R) {
@@ -328,33 +312,19 @@ cron.schedule('0 10,18 * * *', async () => {
             if (cellA && cellA.v && String(cellA.v).includes("▶")) {
                 if (String(cellA.v).includes("TRÁMITES")) currentSection = 2;
                 if (String(cellA.v).includes("DESPACHADOS")) currentSection = 3;
-                cellA.s = { font: { name: "Segoe UI", sz: 11, bold: true, color: { rgb: "1E3A8A" } }, alignment: { vertical: "center", horizontal: "left" } };
                 continue;
             }
-
             for (let C = range.s.c; C <= range.e.c; ++C) {
                 const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
                 if (!wsMaster[cellAddress]) continue;
-
-                let cellStyle = {
-                    border: blackBorder,
-                    alignment: { vertical: "center", horizontal: "center", wrapText: true },
-                    font: { name: "Segoe UI", sz: 10 }
-                };
-
+                let cellStyle = { border: blackBorder, alignment: { vertical: "center", horizontal: "center", wrapText: true }, font: { name: "Segoe UI", sz: 10 } };
                 const headerCheck = wsMaster[XLSX.utils.encode_cell({ r: R, c: 0 })];
                 if (headerCheck && excelHeaders.includes(headerCheck.v)) {
                     cellStyle.fill = { fgColor: { rgb: "1E3A8A" } };
                     cellStyle.font = { name: "Segoe UI", sz: 10, bold: true, color: { rgb: "FFFFFF" } };
                 } else {
                     cellStyle.font = { name: "Segoe UI", sz: 10, color: { rgb: "000000" }, bold: true };
-                    if (currentSection === 3) {
-                        cellStyle.fill = { fgColor: { rgb: "FEE2E2" } };
-                    } else if (currentSection === 2) {
-                        cellStyle.fill = { fgColor: { rgb: "D9E1F2" } };
-                    } else {
-                        cellStyle.fill = { fgColor: { rgb: "FEF08A" } };
-                    }
+                    cellStyle.fill = { fgColor: { rgb: currentSection === 3 ? "FEE2E2" : (currentSection === 2 ? "D9E1F2" : "FEF08A") } };
                 }
                 wsMaster[cellAddress].s = cellStyle;
             }
@@ -363,33 +333,24 @@ cron.schedule('0 10,18 * * *', async () => {
         XLSX.utils.book_append_sheet(wb, wsMaster, "Reporte Maestro Consolidado");
         const excelBase64String = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
 
-        const mailOptionsAuto = {
+        await enviarCorreoSistema({
             to: destinatariosAutomaticos,
             subject: "📊 Reporte Maestro Automático de Expedientes - LOGISTATUS PRO",
-            text: "Adjunto encontrarás el reporte consolidado de operaciones generado automáticamente con formato oficial.",
-            html: "<p>Este es el envío automático programado del reporte consolidado de operaciones de <strong>Logistatus Pro</strong> con su formato oficial idéntico al del sistema.</p>",
-            attachments: [
-                {
-                    filename: 'Reporte_Logistatus_Automatico.xlsx',
-                    content: excelBase64String,
-                    contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                }
-            ]
-        };
-
-        await enviarCorreoSistema(mailOptionsAuto);
-        console.log("✅ [CRON] Correo automático programado con Excel estilizado enviado con éxito.");
+            text: "Adjunto el reporte consolidado de operaciones generado automáticamente.",
+            html: "<p>Reporte automático programado de <strong>Logistatus Pro</strong> en hora de Venezuela.</p>",
+            attachments: [{ filename: 'Reporte_Logistatus_Automatico.xlsx', content: excelBase64String, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }]
+        });
+        console.log("✅ [CRON] Correo automático programado enviado con éxito.");
     } catch (error) {
-        console.error("❌ [CRON] Error al generar o enviar el correo automático programado:", error);
+        console.error("❌ [CRON] Error en envío automático:", error);
     }
-}, {
-    timezone: "America/Caracas"
-});
+}, { timezone: "America/Caracas" });
 
+// Evaluación autónoma y automatizada de alertas operativas y de ETA en Hora de Venezuela
 cron.schedule('0 9,12,15,18,19,20 * * *', async () => {
     const ahoraVzla = new Date().toLocaleString("en-US", { timeZone: "America/Caracas" });
     const horaActual = new Date(ahoraVzla).getHours();
-    console.log(`⏰ [CRON NUBE] Evaluando alertas operativas en hora Venezuela (${horaActual}:00 hrs)...`);
+    console.log(`⏰ [CRON NUBE] Evaluando alertas automáticas en hora Venezuela (${horaActual}:00 hrs)...`);
     
     try {
         const records = await obtenerExpedientesFirestore();
@@ -401,7 +362,7 @@ cron.schedule('0 9,12,15,18,19,20 * * *', async () => {
         let expSet = new Set();
         let blSet = new Set();
         let contSet = new Set();
-        let alertasEnviadasCount = 0;
+        let listaAlertasAutomaticas = [];
 
         for (const rec of records) {
             const expVal = (rec.num_expediente || "").trim().toLowerCase();
@@ -411,22 +372,19 @@ cron.schedule('0 9,12,15,18,19,20 * * *', async () => {
 
             if (expVal) {
                 if (expSet.has(expVal)) {
-                    await enviarAlertaTelegramServidor(`❗ **DUPLICADO:** El N.º de Expediente **${rec.num_expediente}** está repetido en el sistema.`);
-                    alertasEnviadasCount++;
+                    listaAlertasAutomaticas.push(`❗ **DUPLICADO:** Expediente **${rec.num_expediente}** repetido.`);
                 }
                 expSet.add(expVal);
             }
             if (blVal && blVal !== 's/n') {
                 if (blSet.has(blVal)) {
-                    await enviarAlertaTelegramServidor(`❗ **DUPLICADO:** El N.º de B/L o AWB **${rec.awb_bl}** ya está usado en otro expediente.`);
-                    alertasEnviadasCount++;
+                    listaAlertasAutomaticas.push(`❗ **DUPLICADO:** B/L o AWB **${rec.awb_bl}** repetido.`);
                 }
                 blSet.add(blVal);
             }
-            contenedoresList.forEach(async (contVal) => {
+            contenedoresList.forEach(contVal => {
                 if (contSet.has(contVal)) {
-                    await enviarAlertaTelegramServidor(`❗ **DUPLICADO:** El Contenedor **${contVal.toUpperCase()}** ya está registrado en otro expediente.`);
-                    alertasEnviadasCount++;
+                    listaAlertasAutomaticas.push(`❗ **DUPLICADO:** Contenedor **${contVal.toUpperCase()}** repetido.`);
                 }
                 contSet.add(contVal);
             });
@@ -435,58 +393,50 @@ cron.schedule('0 9,12,15,18,19,20 * * *', async () => {
 
             const expName = rec.num_expediente || 'S/N';
             const clientName = rec.cliente || 'S/C';
-            const esMaritimo = identificarEsMaritimoServidor(rec);
-            const fechaLlegadaStr = rec.fecha_llegada;
-            const hasLlegadaRegistrada = Boolean(fechaLlegadaStr && fechaLlegadaStr.trim() !== "");
+            const fechaEtaStr = rec.eta || 'S/N';
 
-            const fechaEta = rec.fecha_llegada || rec.eta_la_guaira || 'S/N';
-            const fechaArriboObjetivo = rec.fecha_llegada || rec.eta_la_guaira;
-            const dArriboObj = parseFechaLocalServidor(fechaArriboObjetivo);
-
-            if (!hasLlegadaRegistrada) {
-                const dVencimientoDai = parseFechaLocalServidor(rec.vencimiento_dai);
-                if (dVencimientoDai) {
-                    const diffVencDays = Math.round((dVencimientoDai - today) / (1000 * 60 * 60 * 24));
-                    if (diffVencDays >= 1 && diffVencDays <= 4) {
-                        let textoCountdown = diffVencDays === 1 ? "¡VENCE MAÑANA!" : `Faltan ${diffVencDays} día(s) para vencer`;
-                        const textTelegram = `**⚠️ DAI PRÓXIMA A VENCER - ${textoCountdown}**\n\n📋 *Expediente:* **${expName}**\n👤 *Cliente:* **${clientName}**\n⏳ Vencimiento: *${rec.vencimiento_dai}*.\n🚢 *ETA:* *${fechaEta}*.`;
-                        
-                        await enviarAlertaTelegramServidor(textTelegram);
-                        alertasEnviadasCount++;
+            // Alerta ETA Próximo (0 a 5 días) con ETA al final
+            if (rec.eta) {
+                const partsEta = rec.eta.split('/');
+                if (partsEta.length === 3) {
+                    const dEta = new Date(partsEta[2], partsEta[1] - 1, partsEta[0]);
+                    dEta.setHours(0,0,0,0);
+                    const diffDays = Math.round((dEta - today) / (1000 * 60 * 60 * 24));
+                    if (diffDays >= 0 && diffDays <= 5) {
+                        const txt = diffDays === 0 ? "¡LLEGA HOY!" : `Faltan ${diffDays}d`;
+                        listaAlertasAutomaticas.push(`🚢 **ETA PRÓXIMO:** Exp: **${expName}** | Cliente: **${clientName}** | ⏳ ${txt} | 📅 ETA: **${fechaEtaStr}**`);
                     }
                 }
+            }
 
-                if (dArriboObj) {
-                    const diffLlegadaDays = Math.round((dArriboObj - today) / (1000 * 60 * 60 * 24));
-                    const maxDiasAnticipacion = esMaritimo ? 5 : 4;
-                    const minDiasAnticipacion = esMaritimo ? 2 : 1;
-
-                    if (diffLlegadaDays >= minDiasAnticipacion && diffLlegadaDays <= maxDiasAnticipacion) {
-                        const modoTexto = esMaritimo ? "MARÍTIMO" : "AÉREO";
-                        const tipoFecha = rec.fecha_llegada ? "Llegada" : "ETA La Guaira";
-                        const textTelegram = `**⚠️ CUENTA REGRESIVA ${tipoFecha.toUpperCase()} (${modoTexto})**\n\n📋 *Expediente:* **${expName}**\n👤 *Cliente:* **${clientName}**\n⏳ Faltan *${diffLlegadaDays} día(s)* para el ${tipoFecha} (${fechaArriboObjetivo}).`;
-
-                        await enviarAlertaTelegramServidor(textTelegram);
-                        alertasEnviadasCount++;
-                    }
-
-                    const noTieneDai = !rec.fecha_registro_dai || rec.fecha_registro_dai.trim() === "";
-                    if (diffLlegadaDays <= maxDiasAnticipacion && noTieneDai) {
-                        const textTelegramDai = `**⚠️ FALTA REGISTRAR DAI**\n\n📋 *Expediente:* **${expName}**\n👤 *Cliente:* **${clientName}**\n⏳ El arribo es cercano (*${fechaArriboObjetivo}*) y el registro DAI está pendiente o vacío.\n🚢 *ETA:* *${fechaEta}*.`;
-
-                        await enviarAlertaTelegramServidor(textTelegramDai);
-                        alertasEnviadasCount++;
+            // Alerta DAI próxima a vencer o vencida con ETA al final
+            if (rec.vencimiento_dai) {
+                const partsVenc = rec.vencimiento_dai.split('/');
+                if (partsVenc.length === 3) {
+                    const dVenc = new Date(partsVenc[2], partsVenc[1] - 1, partsVenc[0]);
+                    dVenc.setHours(0,0,0,0);
+                    const diffVenc = Math.round((dVenc - today) / (1000 * 60 * 60 * 24));
+                    if (diffVenc >= 0 && diffVenc <= 4) {
+                        const txtVenc = diffVenc === 0 ? "¡VENCE HOY!" : `Faltan ${diffVenc}d`;
+                        listaAlertasAutomaticas.push(`⚠️ **DAI PRÓXIMA A VENCER:** Exp: **${expName}** | Cliente: **${clientName}** | ⏳ ${txtVenc} (${rec.vencimiento_dai}) | 📅 ETA: **${fechaEtaStr}**`);
+                    } else if (diffVenc < 0) {
+                        listaAlertasAutomaticas.push(`🚨 **DAI VENCIDA:** Exp: **${expName}** | Cliente: **${clientName}** | ⚠️ Venció el ${rec.vencimiento_dai} | 📅 ETA: **${fechaEtaStr}**`);
                     }
                 }
             }
         }
-        console.log(`✅ [CRON NUBE] Verificación finalizada. Alertas enviadas: ${alertasEnviadasCount}`);
+
+        if (listaAlertasAutomaticas.length > 0) {
+            const mensajeFinalAuto = `🤖 **REPORTE AUTOMÁTICO DE ALERTAS (Hora Venezuela)**\n\n` + listaAlertasAutomaticas.join("\n\n");
+            await enviarAlertaTelegramServidor(mensajeFinalAuto);
+            console.log(`✅ [CRON NUBE] Reporte automático enviado. Total alertas: ${listaAlertasAutomaticas.length}`);
+        } else {
+            console.log(`✅ [CRON NUBE] Verificación finalizada. No hay alertas activas en este horario.`);
+        }
     } catch (error) {
         console.error("❌ [CRON NUBE] Error al procesar alertas automáticas:", error);
     }
-}, {
-    timezone: "America/Caracas"
-});
+}, { timezone: "America/Caracas" });
 
 // ==========================================
 // 5. INICIO DEL SERVIDOR
