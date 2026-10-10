@@ -21,8 +21,8 @@ app.get('/', (req, res) => {
 // Credenciales y configuraciones desde variables de entorno
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID;
-const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY;
+const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || "statusylogistica";
+const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY || "";
 
 // ==========================================
 // 0. CONFIGURACIÓN DE CORS Y MIDDLEWARES
@@ -47,6 +47,11 @@ app.get('/api/config', (req, res) => {
         telegramBotToken: TELEGRAM_BOT_TOKEN || '',
         telegramChatId: TELEGRAM_CHAT_ID || ''
     });
+});
+
+// Ruta de verificación para UptimeRobot
+app.get('/health', (req, res) => {
+    res.status(200).send('LOGISTATUS PRO - Servidor Activo OK');
 });
 
 // ==========================================
@@ -136,9 +141,58 @@ async function enviarAlertaTelegramServidor(mensajeTexto) {
     }
 }
 
+// Función avanzada para control de duplicados en la nube por slots de hora[cite: 4]
+async function enviarAlertaTelegramUnicaServidor(recId, tipoAlerta, mensajeTexto) {
+    const ahora = new Date();
+    const horaActual = ahora.getHours();
+
+    let slotId = "";
+    if (horaActual >= 9 && horaActual < 12) slotId = "slot_9am";
+    else if (horaActual >= 12 && horaActual < 15) slotId = "slot_12pm";
+    else if (horaActual >= 15 && horaActual < 18) slotId = "slot_3pm";
+    else if (horaActual === 18) slotId = "slot_6pm";
+    else if (horaActual === 19) slotId = "slot_7pm";
+    else if (horaActual === 20) slotId = "slot_8pm";
+    else slotId = `slot_${horaActual}h`;
+
+    const hoyStr = ahora.toISOString().split('T')[0];
+    const controlDocId = `alerta_${recId}_${tipoAlerta}_${hoyStr}_${slotId}`;
+    const projectId = process.env.FIREBASE_PROJECT_ID;
+
+    try {
+        const checkUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/historial_alertas/${controlDocId}`;
+        const checkRes = await fetch(checkUrl);
+        
+        if (checkRes.ok) {
+            return; // Ya se envió en esta franja horaria, se omite para evitar duplicados[cite: 4]
+        }
+
+        await enviarAlertaTelegramServidor(mensajeTexto);
+
+        const createUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/historial_alertas?documentId=${controlDocId}`;
+        await fetch(createUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                fields: {
+                    expedienteId: { stringValue: String(recId) },
+                    tipo: { stringValue: String(tipoAlerta) },
+                    fechaEnvio: { stringValue: String(hoyStr) },
+                    horarioSlot: { stringValue: String(slotId) }
+                }
+            })
+        });
+
+    } catch (err) {
+        console.error("❌ Error al gestionar el control de duplicados en la nube:", err);
+        await enviarAlertaTelegramServidor(mensajeTexto);
+    }
+}
+
 async function obtenerExpedientesFirestore() {
     try {
-        const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/expedientes`;
+        const projectId = process.env.FIREBASE_PROJECT_ID;
+        const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/expedientes`;
         const response = await fetch(url);
         const result = await response.json();
         
@@ -174,6 +228,12 @@ function parseFechaLocalServidor(str) {
         }
     }
     return null;
+}
+
+function identificarEsMaritimoServidor(rec = {}) {
+    const modo = (rec.modo_transporte || "").toLowerCase();
+    if (modo.includes("aéreo") || modo.includes("aereo")) return false;
+    return true;
 }
 
 // ==========================================
@@ -331,7 +391,8 @@ cron.schedule('0 10,18 * * *', async () => {
         }
 
         XLSX.utils.book_append_sheet(wb, wsMaster, "Reporte Maestro Consolidado");
-        const excelBase64String = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+        const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
+        const excelBase64String = Buffer.from(excelBuffer).toString('base64');
 
         await enviarCorreoSistema({
             to: destinatariosAutomaticos,
@@ -346,7 +407,7 @@ cron.schedule('0 10,18 * * *', async () => {
     }
 }, { timezone: "America/Caracas" });
 
-// Evaluación autónoma y automatizada de alertas operativas y de ETA en Hora de Venezuela
+// Evaluación autónoma y automatizada de alertas operativas en Hora de Venezuela con formato vertical limpio
 cron.schedule('0 9,12,15,18,19,20 * * *', async () => {
     const ahoraVzla = new Date().toLocaleString("en-US", { timeZone: "America/Caracas" });
     const horaActual = new Date(ahoraVzla).getHours();
@@ -362,7 +423,7 @@ cron.schedule('0 9,12,15,18,19,20 * * *', async () => {
         let expSet = new Set();
         let blSet = new Set();
         let contSet = new Set();
-        let listaAlertasAutomaticas = [];
+        let alertasEnviadasCount = 0;
 
         for (const rec of records) {
             const expVal = (rec.num_expediente || "").trim().toLowerCase();
@@ -370,69 +431,83 @@ cron.schedule('0 9,12,15,18,19,20 * * *', async () => {
             const contRaw = (rec.numero_contenedor || "").trim();
             let contenedoresList = contRaw ? contRaw.split(',').map(c => c.trim().toLowerCase()).filter(Boolean) : [];
 
+            const recIdUnico = rec.id || rec.num_expediente || 'gen';
+            const fechaEtaStr = rec.eta_la_guaira || rec.fecha_llegada || 'S/N';
+            const expName = rec.num_expediente || 'S/N';
+            const clientName = rec.cliente || 'S/C';
+
             if (expVal) {
                 if (expSet.has(expVal)) {
-                    listaAlertasAutomaticas.push(`❗ **DUPLICADO:** Expediente **${rec.num_expediente}** repetido.`);
+                    const msgDuplicadoExp = `❗ **EXPEDIENTE DUPLICADO**\n• **Expediente:** ${rec.num_expediente}\n• **Estado:** Repetido en el sistema\n• **Fecha ETA:** ${fechaEtaStr}`;
+                    await enviarAlertaTelegramUnicaServidor(recIdUnico, 'duplicado_exp', msgDuplicadoExp);
+                    alertasEnviadasCount++;
                 }
                 expSet.add(expVal);
             }
             if (blVal && blVal !== 's/n') {
                 if (blSet.has(blVal)) {
-                    listaAlertasAutomaticas.push(`❗ **DUPLICADO:** B/L o AWB **${rec.awb_bl}** repetido.`);
+                    const msgDuplicadoBl = `❗ **B/L O AWB DUPLICADO**\n• **B/L / AWB:** ${rec.awb_bl}\n• **Estado:** Ya está usado en otro expediente\n• **Fecha ETA:** ${fechaEtaStr}`;
+                    await enviarAlertaTelegramUnicaServidor(recIdUnico, 'duplicado_bl', msgDuplicadoBl);
+                    alertasEnviadasCount++;
                 }
                 blSet.add(blVal);
             }
-            contenedoresList.forEach(contVal => {
+            contenedoresList.forEach(async (contVal) => {
                 if (contSet.has(contVal)) {
-                    listaAlertasAutomaticas.push(`❗ **DUPLICADO:** Contenedor **${contVal.toUpperCase()}** repetido.`);
+                    const msgDuplicadoCont = `❗ **CONTENEDOR DUPLICADO**\n• **Contenedor:** ${contVal.toUpperCase()}\n• **Estado:** Ya está registrado en otro expediente\n• **Fecha ETA:** ${fechaEtaStr}`;
+                    await enviarAlertaTelegramUnicaServidor(recIdUnico, `duplicado_cont_${contVal}`, msgDuplicadoCont);
+                    alertasEnviadasCount++;
                 }
                 contSet.add(contVal);
             });
 
             if (rec.despacho) continue;
 
-            const expName = rec.num_expediente || 'S/N';
-            const clientName = rec.cliente || 'S/C';
-            const fechaEtaStr = rec.eta || 'S/N';
+            const esMaritimo = identificarEsMaritimoServidor(rec);
+            const fechaLlegadaStr = rec.fecha_llegada;
+            const hasLlegadaRegistrada = Boolean(fechaLlegadaStr && fechaLlegadaStr.trim() !== "");
 
-            // Alerta ETA Próximo (0 a 5 días) con ETA al final
-            if (rec.eta) {
-                const partsEta = rec.eta.split('/');
-                if (partsEta.length === 3) {
-                    const dEta = new Date(partsEta[2], partsEta[1] - 1, partsEta[0]);
-                    dEta.setHours(0,0,0,0);
-                    const diffDays = Math.round((dEta - today) / (1000 * 60 * 60 * 24));
-                    if (diffDays >= 0 && diffDays <= 5) {
-                        const txt = diffDays === 0 ? "¡LLEGA HOY!" : `Faltan ${diffDays}d`;
-                        listaAlertasAutomaticas.push(`🚢 **ETA PRÓXIMO:** Exp: **${expName}** | Cliente: **${clientName}** | ⏳ ${txt} | 📅 ETA: **${fechaEtaStr}**`);
+            const fechaArriboObjetivo = rec.fecha_llegada || rec.eta_la_guaira;
+            const dArriboObj = parseFechaLocalServidor(fechaArriboObjetivo);
+
+            if (!hasLlegadaRegistrada) {
+                const dVencimientoDai = parseFechaLocalServidor(rec.vencimiento_dai);
+                if (dVencimientoDai) {
+                    const diffVencDays = Math.round((dVencimientoDai - today) / (1000 * 60 * 60 * 24));
+                    if (diffVencDays >= 1 && diffVencDays <= 4) {
+                        let textoCountdown = diffVencDays === 1 ? "¡VENCE MAÑANA!" : `Faltan ${diffVencDays} día(s) para vencer`;
+                        const textTelegram = `⚠️ **DAI PRÓXIMA A VENCER**\n• **Exp:** ${expName}\n• **Cliente:** ${clientName}\n• **Vencimiento:** ${textoCountdown} (${rec.vencimiento_dai})\n• **Fecha ETA:** ${fechaEtaStr}`;
+                        
+                        await enviarAlertaTelegramUnicaServidor(recIdUnico, 'dai_venc', textTelegram);
+                        alertasEnviadasCount++;
                     }
                 }
-            }
 
-            // Alerta DAI próxima a vencer o vencida con ETA al final
-            if (rec.vencimiento_dai) {
-                const partsVenc = rec.vencimiento_dai.split('/');
-                if (partsVenc.length === 3) {
-                    const dVenc = new Date(partsVenc[2], partsVenc[1] - 1, partsVenc[0]);
-                    dVenc.setHours(0,0,0,0);
-                    const diffVenc = Math.round((dVenc - today) / (1000 * 60 * 60 * 24));
-                    if (diffVenc >= 0 && diffVenc <= 4) {
-                        const txtVenc = diffVenc === 0 ? "¡VENCE HOY!" : `Faltan ${diffVenc}d`;
-                        listaAlertasAutomaticas.push(`⚠️ **DAI PRÓXIMA A VENCER:** Exp: **${expName}** | Cliente: **${clientName}** | ⏳ ${txtVenc} (${rec.vencimiento_dai}) | 📅 ETA: **${fechaEtaStr}**`);
-                    } else if (diffVenc < 0) {
-                        listaAlertasAutomaticas.push(`🚨 **DAI VENCIDA:** Exp: **${expName}** | Cliente: **${clientName}** | ⚠️ Venció el ${rec.vencimiento_dai} | 📅 ETA: **${fechaEtaStr}**`);
+                if (dArriboObj) {
+                    const diffLlegadaDays = Math.round((dArriboObj - today) / (1000 * 60 * 60 * 24));
+                    const maxDiasAnticipacion = esMaritimo ? 5 : 4;
+                    const minDiasAnticipacion = esMaritimo ? 2 : 1;
+
+                    if (diffLlegadaDays >= minDiasAnticipacion && diffLlegadaDays <= maxDiasAnticipacion) {
+                        const modoTexto = esMaritimo ? "MARÍTIMO" : "AÉREO";
+                        const txtTiempo = diffLlegadaDays === 0 ? "¡LLEGA HOY!" : `Faltan ${diffLlegadaDays}d`;
+                        const textTelegram = `🚢 **ETA PRÓXIMO (${modoTexto})**\n• **Exp:** ${expName}\n• **Cliente:** ${clientName}\n• **Tiempo:** ${txtTiempo}\n• **Fecha ETA:** ${fechaEtaStr}`;
+
+                        await enviarAlertaTelegramUnicaServidor(recIdUnico, 'cuenta_regresiva_eta', textTelegram);
+                        alertasEnviadasCount++;
+                    }
+
+                    const noTieneDai = !rec.fecha_registro_dai || rec.fecha_registro_dai.trim() === "";
+                    if (diffLlegadaDays <= maxDiasAnticipacion && noTieneDai) {
+                        const textTelegramDai = `⚠️ **FALTA REGISTRAR DAI**\n• **Exp:** ${expName}\n• **Cliente:** ${clientName}\n• **Detalle:** Arribo cercano sin registro DAI\n• **Fecha ETA:** ${fechaEtaStr}`;
+
+                        await enviarAlertaTelegramUnicaServidor(recIdUnico, 'falta_reg_dai', textTelegramDai);
+                        alertasEnviadasCount++;
                     }
                 }
             }
         }
-
-        if (listaAlertasAutomaticas.length > 0) {
-            const mensajeFinalAuto = `🤖 **REPORTE AUTOMÁTICO DE ALERTAS (Hora Venezuela)**\n\n` + listaAlertasAutomaticas.join("\n\n");
-            await enviarAlertaTelegramServidor(mensajeFinalAuto);
-            console.log(`✅ [CRON NUBE] Reporte automático enviado. Total alertas: ${listaAlertasAutomaticas.length}`);
-        } else {
-            console.log(`✅ [CRON NUBE] Verificación finalizada. No hay alertas activas en este horario.`);
-        }
+        console.log(`✅ [CRON NUBE] Verificación finalizada. Alertas enviadas: ${alertasEnviadasCount}`);
     } catch (error) {
         console.error("❌ [CRON NUBE] Error al procesar alertas automáticas:", error);
     }
