@@ -10,8 +10,6 @@ const cron = require('node-cron');
 // ==========================================
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Permite leer archivos estáticos y carga directamente sotoaduanas.html en la raíz[cite: 1]
 app.use(express.static(path.join(__dirname)));
 
 app.get('/', (req, res) => {
@@ -49,9 +47,8 @@ app.get('/api/config', (req, res) => {
     });
 });
 
-// Ruta de verificación para UptimeRobot
 app.get('/health', (req, res) => {
-    res.status(200).send('LOGISTATUS PRO - Servidor Activo OK');
+    res.status(200).send('SOTO ADUANAS - Servidor Activo OK');
 });
 
 // ==========================================
@@ -63,7 +60,7 @@ async function enviarCorreoSistema(opcionesMail) {
         const remitente = process.env.RESEND_REMITE || "onboarding@resend.dev";
 
         if (!apiKey || apiKey.includes("TU_API_KEY")) {
-            throw new Error("Falta configurar la RESEND_API_KEY en las variables de entorno de Render para este cliente.");
+            throw new Error("Falta configurar la RESEND_API_KEY en las variables de entorno de Render.");
         }
 
         let destinatarios = opcionesMail.to;
@@ -86,9 +83,9 @@ async function enviarCorreoSistema(opcionesMail) {
         }
 
         const payload = {
-            from: `LOGISTATUS PRO <${remitente}>`,
+            from: `SOTO ADUANAS <${remitente}>`,
             to: destinatarios,
-            subject: opcionesMail.subject || 'Notificación LOGISTATUS PRO',
+            subject: opcionesMail.subject || 'Notificación SOTO ADUANAS',
             html: opcionesMail.html || opcionesMail.text || 'Sin contenido'
         };
 
@@ -141,7 +138,6 @@ async function enviarAlertaTelegramServidor(mensajeTexto) {
     }
 }
 
-// Función avanzada para control de duplicados en la nube por slots de hora[cite: 4]
 async function enviarAlertaTelegramUnicaServidor(recId, tipoAlerta, mensajeTexto) {
     const ahora = new Date();
     const horaActual = ahora.getHours();
@@ -156,359 +152,4 @@ async function enviarAlertaTelegramUnicaServidor(recId, tipoAlerta, mensajeTexto
     else slotId = `slot_${horaActual}h`;
 
     const hoyStr = ahora.toISOString().split('T')[0];
-    const controlDocId = `alerta_${recId}_${tipoAlerta}_${hoyStr}_${slotId}`;
-    const projectId = process.env.FIREBASE_PROJECT_ID;
-
-    try {
-        const checkUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/historial_alertas/${controlDocId}`;
-        const checkRes = await fetch(checkUrl);
-        
-        if (checkRes.ok) {
-            return; // Ya se envió en esta franja horaria, se omite para evitar duplicados[cite: 4]
-        }
-
-        await enviarAlertaTelegramServidor(mensajeTexto);
-
-        const createUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/historial_alertas?documentId=${controlDocId}`;
-        await fetch(createUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                fields: {
-                    expedienteId: { stringValue: String(recId) },
-                    tipo: { stringValue: String(tipoAlerta) },
-                    fechaEnvio: { stringValue: String(hoyStr) },
-                    horarioSlot: { stringValue: String(slotId) }
-                }
-            })
-        });
-
-    } catch (err) {
-        console.error("❌ Error al gestionar el control de duplicados en la nube:", err);
-        await enviarAlertaTelegramServidor(mensajeTexto);
-    }
-}
-
-async function obtenerExpedientesFirestore() {
-    try {
-        const projectId = process.env.FIREBASE_PROJECT_ID;
-        const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/expedientes`;
-        const response = await fetch(url);
-        const result = await response.json();
-        
-        if (!result.documents) return [];
-
-        return result.documents.map(doc => {
-            let fields = doc.fields || {};
-            let parsedRecord = {};
-            for (let key in fields) {
-                let valObj = fields[key];
-                parsedRecord[key] = valObj.stringValue || valObj.doubleValue || valObj.integerValue || valObj.booleanValue || "";
-            }
-            return parsedRecord;
-        });
-    } catch (err) {
-        console.error("❌ Error al consultar Firestore desde el servidor:", err);
-        return [];
-    }
-}
-
-function parseFechaLocalServidor(str) {
-    if (!str) return null;
-    str = String(str).trim();
-    if (str.includes('/')) {
-        const p = str.split('/');
-        if (p.length === 3 && p[2].length === 4) {
-            return new Date(`${p[2]}-${p[1]}-${p[0]}T00:00:00`);
-        }
-    } else if (str.includes('-')) {
-        const p = str.split('-');
-        if (p.length === 3 && p[0].length === 4) {
-            return new Date(`${p[0]}-${p[1]}-${p[2]}T00:00:00`);
-        }
-    }
-    return null;
-}
-
-function identificarEsMaritimoServidor(rec = {}) {
-    const modo = (rec.modo_transporte || "").toLowerCase();
-    if (modo.includes("aéreo") || modo.includes("aereo")) return false;
-    return true;
-}
-
-// ==========================================
-// 3. RUTAS DE LA API
-// ==========================================
-app.post('/api/enviar-excel-correo', async (req, res) => {
-    const { destinatario, asunto, mensaje, excelBase64, nombreArchivo } = req.body;
-    
-    if (!excelBase64) {
-        return res.status(400).json({ success: false, message: 'Falta el archivo Excel en Base64.' });
-    }
-
-    const base64Data = excelBase64.includes('base64,') ? excelBase64.split('base64,')[1] : excelBase64;
-
-    const mailOptions = {
-        to: destinatario,
-        subject: asunto || '📊 Reporte de Expedientes - LOGISTATUS PRO',
-        text: mensaje || 'Adjunto encontrarás el reporte de expedientes actualizado.',
-        attachments: [
-            {
-                filename: nombreArchivo || 'Reporte_Logistatus.xlsx',
-                content: Buffer.from(base64Data, 'base64'),
-                contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            }
-        ]
-    };
-
-    try {
-        await enviarCorreoSistema(mailOptions);
-        res.json({ success: true, message: 'Correo con Excel adjunto enviado con éxito.' });
-    } catch (error) {
-        console.error('Error al enviar el correo:', error);
-        res.status(500).json({ success: false, message: error.message || 'Error al enviar el correo.' });
-    }
-});
-
-app.post('/api/notificar', async (req, res) => {
-    try {
-        const { mensaje } = req.body;
-        if (!mensaje) {
-            return res.status(400).json({ success: false, message: 'Falta el mensaje de alerta.' });
-        }
-        await enviarAlertaTelegramServidor(mensaje);
-        res.json({ success: true, message: "Alerta enviada a Telegram con éxito." });
-    } catch (error) {
-        console.error("❌ Error en /api/notificar:", error);
-        res.status(500).json({ success: false, message: error.message });
-    }
-});
-
-// ==========================================
-// 4. TAREAS PROGRAMADAS EN SEGUNDO PLANO (CRON)
-// ==========================================
-cron.schedule('0 10,18 * * *', async () => {
-    console.log("⏰ [CRON] Ejecutando generación y envío automático...");
-    try {
-        const correoCliente = process.env.CORREO_DESTINATARIO_AUTOMATICO;
-        if (!correoCliente) return;
-        const destinatariosAutomaticos = [correoCliente];
-        
-        const records = await obtenerExpedientesFirestore();
-        if (!records || records.length === 0) return;
-
-        const excelHeaders = [
-            "MODO VÍA", "N.º EXPEDIENTE", "CLIENTE", "PROVEEDOR", "LÍNEA", "PAÍS ORIGEN", "BUQUE / VUELO ORIGEN", "AWB / BL", "N.º CONTENEDOR(ES)", "PESO BL", "CONTENIDO SEGÚN BL", "ETD ORIGEN", "PUERTO TRANSBORDO", "ETA TRANSBORDO", "ETD TRANSBORDO", "BUQUE / VUELO A VE", "ETA LA GUAIRA", "FECHA DE LLEGADA", "RECIBIDA ACTA RECEPCIÓN", "FECHA ABANDONO LEGAL", "PERMISOLOGÍA", "FECHA RECIBIDO PERMISOLOGÍA", "REGISTRO DAI", "FECHA REGISTRO DAI", "VENCIMIENTO DAI", "PREVALORACIÓN ENVIADA", "DOC. VALORADO EN SISTEMA", "FACTURA RECIBIDA", "MONTO FLETE", "RECIBIDO DOC. TRANSPORTE", "FECHA TRANSMISIÓN", "CANAL", "FUNCIONARIO", "RECONOCIMIENTO", "VALIDACIÓN", "DESPACHO", "ALMACÉN", "RECIBIDA ACTA (ALMACÉN)", "DÍAS LIBRES ALMACÉN", "INICIO DÍAS LIBRES ALMACÉN", "CULMINACIÓN DÍAS LIBRES ALMACÉN", "NAVIERA", "DÍAS LIBRES NAVIERA", "INICIO DÍAS LIBRES NAVIERA", "CULMINACIÓN DÍAS LIBRES NAVIERA", "OBSERVACIONES"
-        ];
-
-        const fieldsList = [
-            "modo_transporte", "num_expediente", "cliente", "proveedor", "linea", "pais_origen", "buque_origen_vuelo",
-            "awb_bl", "numero_contenedor", "peso_bl", "contenido_segun_bl", "etd_origen",
-            "puerto_transbordo", "eta_transbordo", "etd_transbordo", "buque_vuelo_ve",
-            "eta_la_guaira", "fecha_llegada", "recibida_acta_recepcion", "fecha_abandono_legal", "permisologia", "fecha_recibido_permisologia",
-            "registro_dai", "fecha_registro_dai", "vencimiento_dai", "prevaloracion_enviada", "documento_valorado_en_sistema", "factura_recibida", "monto_flete",
-            "recibido_documento_transporte", "fecha_transmision", "canal", "funcionario", "reconocimiento", "validacion", "despacho",
-            "almacen", "recibida_acta_recepcion_almacen", "dias_libres_almacen", "inicio_dias_libres", "culminacion_dias_libres",
-            "naviera", "dias_libres_naviera", "inicio_dias_libres_naviera", "culminacion_dias_libres_naviera",
-            "observaciones"
-        ];
-
-        const anchosEspecificosXLSX = [
-            10, 11, 31, 21, 15, 15, 21, 21, 18, 12, 18, 13, 14, 14, 14, 15, 14, 
-            14.5, 14.5, 14.5, 16, 16, 12, 14.5, 14.5, 14.5, 16, 12, 12, 12, 
-            14, 14, 14, 17, 15, 15, 17, 14, 14, 14, 15, 17, 14.5, 14.5, 14.5, 14.5, 20
-        ];
-
-        const blackBorder = {
-            top: { style: "thin", color: { rgb: "FFFFFF" } },
-            bottom: { style: "thin", color: { rgb: "FFFFFF" } },
-            left: { style: "thin", color: { rgb: "FFFFFF" } },
-            right: { style: "thin", color: { rgb: "FFFFFF" } }
-        };
-
-        const buildRowsServidor = (listaRecs) => {
-            return listaRecs.map(rec => fieldsList.map(f => rec[f] !== undefined && rec[f] !== null ? rec[f] : ""));
-        };
-
-        const ordenarPorETA = (lista) => {
-            return lista.sort((a, b) => {
-                let fA = parseFechaLocalServidor(a.eta_la_guaira || a.fecha_llegada) || new Date('9999-12-31');
-                let fB = parseFechaLocalServidor(b.eta_la_guaira || b.fecha_llegada) || new Date('9999-12-31');
-                return fA - fB;
-            });
-        };
-
-        const porLlegar = ordenarPorETA(records.filter(r => !r.despacho && !r.validacion && !r.reconocimiento));
-        const tramites = ordenarPorETA(records.filter(r => !r.despacho && (r.validacion || r.reconocimiento || r.fecha_transmision)));
-        const despachados = ordenarPorETA(records.filter(r => r.despacho));
-
-        let masterRows = [];
-        if (porLlegar.length > 0) {
-            masterRows.push(["▶ 1. EXPEDIENTES POR LLEGAR"]);
-            masterRows.push(excelHeaders);
-            masterRows.push(...buildRowsServidor(porLlegar));
-            masterRows.push([]);
-        }
-        if (tramites.length > 0) {
-            masterRows.push(["▶ 2. TRÁMITES ADUANALES Y EN PROCESO"]);
-            masterRows.push(excelHeaders);
-            masterRows.push(...buildRowsServidor(tramites));
-            masterRows.push([]);
-        }
-        if (despachados.length > 0) {
-            masterRows.push(["▶ 3. EXPEDIENTES DESPACHADOS"]);
-            masterRows.push(excelHeaders);
-            masterRows.push(...buildRowsServidor(despachados));
-        }
-
-        const wb = XLSX.utils.book_new();
-        const wsMaster = XLSX.utils.aoa_to_sheet(masterRows);
-        const range = XLSX.utils.decode_range(wsMaster['!ref']);
-        wsMaster['!cols'] = anchosEspecificosXLSX.map(w => ({ wch: w }));
-
-        let currentSection = 1;
-        for (let R = range.s.r; R <= range.e.r; ++R) {
-            const cellA = wsMaster[XLSX.utils.encode_cell({ r: R, c: 0 })];
-            if (cellA && cellA.v && String(cellA.v).includes("▶")) {
-                if (String(cellA.v).includes("TRÁMITES")) currentSection = 2;
-                if (String(cellA.v).includes("DESPACHADOS")) currentSection = 3;
-                continue;
-            }
-            for (let C = range.s.c; C <= range.e.c; ++C) {
-                const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
-                if (!wsMaster[cellAddress]) continue;
-                let cellStyle = { border: blackBorder, alignment: { vertical: "center", horizontal: "center", wrapText: true }, font: { name: "Segoe UI", sz: 10 } };
-                const headerCheck = wsMaster[XLSX.utils.encode_cell({ r: R, c: 0 })];
-                if (headerCheck && excelHeaders.includes(headerCheck.v)) {
-                    cellStyle.fill = { fgColor: { rgb: "1E3A8A" } };
-                    cellStyle.font = { name: "Segoe UI", sz: 10, bold: true, color: { rgb: "FFFFFF" } };
-                } else {
-                    cellStyle.font = { name: "Segoe UI", sz: 10, color: { rgb: "000000" }, bold: true };
-                    cellStyle.fill = { fgColor: { rgb: currentSection === 3 ? "FEE2E2" : (currentSection === 2 ? "D9E1F2" : "FEF08A") } };
-                }
-                wsMaster[cellAddress].s = cellStyle;
-            }
-        }
-
-        XLSX.utils.book_append_sheet(wb, wsMaster, "Reporte Maestro Consolidado");
-        const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
-        const excelBase64String = Buffer.from(excelBuffer).toString('base64');
-
-        await enviarCorreoSistema({
-            to: destinatariosAutomaticos,
-            subject: "📊 Reporte Maestro Automático de Expedientes - LOGISTATUS PRO",
-            text: "Adjunto el reporte consolidado de operaciones generado automáticamente.",
-            html: "<p>Reporte automático programado de <strong>Logistatus Pro</strong> en hora de Venezuela.</p>",
-            attachments: [{ filename: 'Reporte_Logistatus_Automatico.xlsx', content: excelBase64String, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }]
-        });
-        console.log("✅ [CRON] Correo automático programado enviado con éxito.");
-    } catch (error) {
-        console.error("❌ [CRON] Error en envío automático:", error);
-    }
-}, { timezone: "America/Caracas" });
-
-// Evaluación autónoma y automatizada de alertas operativas en Hora de Venezuela con formato vertical limpio
-cron.schedule('0 9,12,15,18,19,20 * * *', async () => {
-    const ahoraVzla = new Date().toLocaleString("en-US", { timeZone: "America/Caracas" });
-    const horaActual = new Date(ahoraVzla).getHours();
-    console.log(`⏰ [CRON NUBE] Evaluando alertas automáticas en hora Venezuela (${horaActual}:00 hrs)...`);
-    
-    try {
-        const records = await obtenerExpedientesFirestore();
-        if (!records || records.length === 0) return;
-
-        const today = new Date();
-        today.setHours(0,0,0,0);
-
-        let expSet = new Set();
-        let blSet = new Set();
-        let contSet = new Set();
-        let alertasEnviadasCount = 0;
-
-        for (const rec of records) {
-            const expVal = (rec.num_expediente || "").trim().toLowerCase();
-            const blVal = (rec.awb_bl || "").trim().toLowerCase();
-            const contRaw = (rec.numero_contenedor || "").trim();
-            let contenedoresList = contRaw ? contRaw.split(',').map(c => c.trim().toLowerCase()).filter(Boolean) : [];
-
-            const recIdUnico = rec.id || rec.num_expediente || 'gen';
-            const fechaEtaStr = rec.eta_la_guaira || rec.fecha_llegada || 'S/N';
-            const expName = rec.num_expediente || 'S/N';
-            const clientName = rec.cliente || 'S/C';
-
-            if (expVal) {
-                if (expSet.has(expVal)) {
-                    const msgDuplicadoExp = `❗ **EXPEDIENTE DUPLICADO**\n• **Expediente:** ${rec.num_expediente}\n• **Estado:** Repetido en el sistema\n• **Fecha ETA:** ${fechaEtaStr}`;
-                    await enviarAlertaTelegramUnicaServidor(recIdUnico, 'duplicado_exp', msgDuplicadoExp);
-                    alertasEnviadasCount++;
-                }
-                expSet.add(expVal);
-            }
-            if (blVal && blVal !== 's/n') {
-                if (blSet.has(blVal)) {
-                    const msgDuplicadoBl = `❗ **B/L O AWB DUPLICADO**\n• **B/L / AWB:** ${rec.awb_bl}\n• **Estado:** Ya está usado en otro expediente\n• **Fecha ETA:** ${fechaEtaStr}`;
-                    await enviarAlertaTelegramUnicaServidor(recIdUnico, 'duplicado_bl', msgDuplicadoBl);
-                    alertasEnviadasCount++;
-                }
-                blSet.add(blVal);
-            }
-
-            if (rec.despacho) continue;
-
-            const esMaritimo = identificarEsMaritimoServidor(rec);
-            const fechaLlegadaStr = rec.fecha_llegada;
-            const hasLlegadaRegistrada = Boolean(fechaLlegadaStr && fechaLlegadaStr.trim() !== "");
-
-            const fechaArriboObjetivo = rec.fecha_llegada || rec.eta_la_guaira;
-            const dArriboObj = parseFechaLocalServidor(fechaArriboObjetivo);
-
-            if (!hasLlegadaRegistrada) {
-                const dVencimientoDai = parseFechaLocalServidor(rec.vencimiento_dai);
-                if (dVencimientoDai) {
-                    const diffVencDays = Math.round((dVencimientoDai - today) / (1000 * 60 * 60 * 24));
-                    if (diffVencDays >= 1 && diffVencDays <= 4) {
-                        let textoCountdown = diffVencDays === 1 ? "¡VENCE MAÑANA!" : `Faltan ${diffVencDays} día(s) para vencer`;
-                        const textTelegram = `⚠️ **DAI PRÓXIMA A VENCER**\n• **Exp:** ${expName}\n• **Cliente:** ${clientName}\n• **Vencimiento:** ${textoCountdown} (${rec.vencimiento_dai})\n• **Fecha ETA:** ${fechaEtaStr}`;
-                        
-                        await enviarAlertaTelegramUnicaServidor(recIdUnico, 'dai_venc', textTelegram);
-                        alertasEnviadasCount++;
-                    }
-                }
-
-                if (dArriboObj) {
-                    const diffLlegadaDays = Math.round((dArriboObj - today) / (1000 * 60 * 60 * 24));
-                    const maxDiasAnticipacion = esMaritimo ? 5 : 4;
-                    const minDiasAnticipacion = esMaritimo ? 2 : 1;
-
-                    if (diffLlegadaDays >= minDiasAnticipacion && diffLlegadaDays <= maxDiasAnticipacion) {
-                        const modoTexto = esMaritimo ? "MARÍTIMO" : "AÉREO";
-                        const txtTiempo = diffLlegadaDays === 0 ? "¡LLEGA HOY!" : `Faltan ${diffLlegadaDays}d`;
-                        const textTelegram = `🚢 **ETA PRÓXIMO (${modoTexto})**\n• **Exp:** ${expName}\n• **Cliente:** ${clientName}\n• **Tiempo:** ${txtTiempo}\n• **Fecha ETA:** ${fechaEtaStr}`;
-
-                        await enviarAlertaTelegramUnicaServidor(recIdUnico, 'cuenta_regresiva_eta', textTelegram);
-                        alertasEnviadasCount++;
-                    }
-
-                    const noTieneDai = !rec.fecha_registro_dai || rec.fecha_registro_dai.trim() === "";
-                    if (diffLlegadaDays <= maxDiasAnticipacion && noTieneDai) {
-                        const textTelegramDai = `⚠️ **FALTA REGISTRAR DAI**\n• **Exp:** ${expName}\n• **Cliente:** ${clientName}\n• **Detalle:** Arribo cercano sin registro DAI\n• **Fecha ETA:** ${fechaEtaStr}`;
-
-                        await enviarAlertaTelegramUnicaServidor(recIdUnico, 'falta_reg_dai', textTelegramDai);
-                        alertasEnviadasCount++;
-                    }
-                }
-            }
-        }
-        console.log(`✅ [CRON NUBE] Verificación finalizada. Alertas enviadas: ${alertasEnviadasCount}`);
-    } catch (error) {
-        console.error("❌ [CRON NUBE] Error al procesar alertas automáticas:", error);
-    }
-}, { timezone: "America/Caracas" });
-
-// ==========================================
-// 5. INICIO DEL SERVIDOR
-// ==========================================
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`🚀 LOGISTATUS PRO corriendo en http://localhost:${PORT}`);
-});
+    const controlDocId = `alerta_${recId}_${tipoAlerta}_${
