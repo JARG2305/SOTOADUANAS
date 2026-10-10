@@ -329,20 +329,24 @@
         inicializarConfiguracion();
 
         // Función para forzar la ejecución de alertas desde el botón superior
-        window.forzarAlertasServidor = async function() {
-            if (!confirm("¿Desea forzar el envío de las alertas del sistema (correos y Telegram) ahora mismo?")) return;
-            try {
-                const res = await fetch(`${BACKEND_URL}/api/forzar-alertas`, { method: 'POST' });
-                const data = await res.json();
-                if (res.ok) {
-                    alert("✅ Alertas ejecutadas y procesadas correctamente por el servidor.");
-                } else {
-                    alert("⚠️ Respuesta del servidor: " + (data.error || "Procesado con avisos"));
-                }
-            } catch (err) {
-                alert("❌ Error al conectar con el servidor para forzar las alertas: " + err.message);
-            }
+       window.forzarAlertasServidor = async function() {
+    if (!confirm("¿Desea enviar una alerta de prueba al servidor ahora mismo?")) return;
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/notificar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mensaje: "⚠️ Alerta forzada manualmente desde el panel de Soto Aduanas." })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            alert("✅ " + data.message);
+        } else {
+            alert("⚠️ Respuesta del servidor: " + (data.message || "Procesado con avisos"));
         }
+    } catch (err) {
+        alert("❌ Error al conectar con el servidor: " + err.message);
+    }
+}
 
         const fieldsList = [
             "modo_transporte", "num_expediente", "cliente", "proveedor", "linea", 
