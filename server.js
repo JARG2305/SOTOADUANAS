@@ -1,23 +1,19 @@
 require('dotenv').config();
 const express = require('express');
 const app = express(); 
-app.use(express.static(__dirname)); 
 const path = require('path');
 const XLSX = require('xlsx');
 const cron = require('node-cron');
 
-
 // ==========================================
-// 0. CONFIGURACIÓN DE MIDDLEWARES
+// 0. CONFIGURACIÓN DE MIDDLEWARES Y ARCHIVOS ESTÁTICOS
 // ==========================================
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-const path = require('path');
 
-// 1. Permite que el servidor lea los archivos estáticos
+// Permite leer archivos estáticos y carga directamente sotoaduanas.html en la raíz
 app.use(express.static(path.join(__dirname)));
 
-// 2. Hace que la ruta principal abra tu archivo HTML exacto
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'sotoaduanas.html'));
 });
@@ -53,21 +49,17 @@ app.get('/api/config', (req, res) => {
     });
 });
 
-
 // ==========================================
 // 2. FUNCIONES DE SERVICIO (CORREO, TELEGRAM Y FIRESTORE)
 // ==========================================
 async function enviarCorreoSistema(opcionesMail) {
     try {
-        // Lee la API Key específica del servicio de Render del cliente actual
         const apiKey = process.env.RESEND_API_KEY; 
         const remitente = process.env.RESEND_REMITE || "onboarding@resend.dev";
 
         if (!apiKey || apiKey.includes("TU_API_KEY")) {
             throw new Error("Falta configurar la RESEND_API_KEY en las variables de entorno de Render para este cliente.");
         }
-
-        // ... (el resto de tu lógica de conversión de adjuntos sigue igual) ...
 
         let destinatarios = opcionesMail.to;
         if (!Array.isArray(destinatarios)) {
@@ -144,7 +136,6 @@ async function enviarAlertaTelegramServidor(mensajeTexto) {
     }
 }
 
-// Función para obtener los expedientes directo desde Firebase Firestore vía REST API
 async function obtenerExpedientesFirestore() {
     try {
         const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/expedientes`;
@@ -168,7 +159,6 @@ async function obtenerExpedientesFirestore() {
     }
 }
 
-// Funciones auxiliares de fecha y modo de transporte para el servidor
 function parseFechaLocalServidor(str) {
     if (!str) return null;
     str = String(str).trim();
@@ -243,9 +233,6 @@ app.post('/api/notificar', async (req, res) => {
 // ==========================================
 // 4. TAREAS PROGRAMADAS EN SEGUNDO PLANO (CRON)
 // ==========================================
-
-// Envío automático programado de correos con Excel estilizado (10:00 AM y 6:00 PM Hora Venezuela)
-// Si no hay un correo configurado en Render, el sistema no intentará adivinar ni enviará nada genérico
 cron.schedule('0 10,18 * * *', async () => {
     console.log("⏰ [CRON] Ejecutando generación y envío automático...");
     try {
@@ -261,8 +248,6 @@ cron.schedule('0 10,18 * * *', async () => {
             console.log("⚠️ [CRON] No hay registros en Firestore para generar el reporte automático.");
             return;
         }
-        
-        // ... (el resto del código del cron sigue aquí abajo)
 
         const excelHeaders = [
             "MODO VÍA", "N.º EXPEDIENTE", "CLIENTE", "PROVEEDOR", "LÍNEA", "PAÍS ORIGEN", "BUQUE / VUELO ORIGEN", "AWB / BL", "N.º CONTENEDOR(ES)", "PESO BL", "CONTENIDO SEGÚN BL", "ETD ORIGEN", "PUERTO TRANSBORDO", "ETA TRANSBORDO", "ETD TRANSBORDO", "BUQUE / VUELO A VE", "ETA LA GUAIRA", "FECHA DE LLEGADA", "RECIBIDA ACTA RECEPCIÓN", "FECHA ABANDONO LEGAL", "PERMISOLOGÍA", "FECHA RECIBIDO PERMISOLOGÍA", "REGISTRO DAI", "FECHA REGISTRO DAI", "VENCIMIENTO DAI", "PREVALORACIÓN ENVIADA", "DOC. VALORADO EN SISTEMA", "FACTURA RECIBIDA", "MONTO FLETE", "RECIBIDO DOC. TRANSPORTE", "FECHA TRANSMISIÓN", "CANAL", "FUNCIONARIO", "RECONOCIMIENTO", "VALIDACIÓN", "DESPACHO", "ALMACÉN", "RECIBIDA ACTA (ALMACÉN)", "DÍAS LIBRES ALMACÉN", "INICIO DÍAS LIBRES ALMACÉN", "CULMINACIÓN DÍAS LIBRES ALMACÉN", "NAVIERA", "DÍAS LIBRES NAVIERA", "INICIO DÍAS LIBRES NAVIERA", "CULMINACIÓN DÍAS LIBRES NAVIERA", "OBSERVACIONES"
@@ -364,11 +349,11 @@ cron.schedule('0 10,18 * * *', async () => {
                 } else {
                     cellStyle.font = { name: "Segoe UI", sz: 10, color: { rgb: "000000" }, bold: true };
                     if (currentSection === 3) {
-                        cellStyle.fill = { fgColor: { rgb: "FEE2E2" } }; // Rojo claro para despachados
+                        cellStyle.fill = { fgColor: { rgb: "FEE2E2" } };
                     } else if (currentSection === 2) {
-                        cellStyle.fill = { fgColor: { rgb: "D9E1F2" } }; // Azul claro para trámites
+                        cellStyle.fill = { fgColor: { rgb: "D9E1F2" } };
                     } else {
-                        cellStyle.fill = { fgColor: { rgb: "FEF08A" } }; // Amarillo claro para por llegar
+                        cellStyle.fill = { fgColor: { rgb: "FEF08A" } };
                     }
                 }
                 wsMaster[cellAddress].s = cellStyle;
@@ -386,14 +371,14 @@ cron.schedule('0 10,18 * * *', async () => {
             attachments: [
                 {
                     filename: 'Reporte_Logistatus_Automatico.xlsx',
-                    content: excelBase64String, // <--- Usar la variable en base64
+                    content: excelBase64String,
                     contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
                 }
             ]
         };
 
         await enviarCorreoSistema(mailOptionsAuto);
-        console.log("✅ [CRON] Correo automático programado con Excel estilizado enviado con éxito a las 10 AM / 6 PM.");
+        console.log("✅ [CRON] Correo automático programado con Excel estilizado enviado con éxito.");
     } catch (error) {
         console.error("❌ [CRON] Error al generar o enviar el correo automático programado:", error);
     }
@@ -401,7 +386,6 @@ cron.schedule('0 10,18 * * *', async () => {
     timezone: "America/Caracas"
 });
 
-// Evaluación autónoma de alertas operativas en hora de Venezuela (9 AM, 12 PM, 3 PM, 6 PM, 7 PM, 8 PM)[cite: 4]
 cron.schedule('0 9,12,15,18,19,20 * * *', async () => {
     const ahoraVzla = new Date().toLocaleString("en-US", { timeZone: "America/Caracas" });
     const horaActual = new Date(ahoraVzla).getHours();
