@@ -45,14 +45,9 @@ app.get('/api/config', (req, res) => {
     });
 });
 
-// Ruta de verificación para UptimeRobot
-app.get('/health', (req, res) => {
-    res.status(200).send('LOGISTATUS PRO - Servidor Activo OK');
-});
-
-// Ruta raíz principal que entrega la interfaz ligera al entrar a la web
+// Ruta raíz para que UptimeRobot detecte el servidor encendido
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'sotoaduanas.html'));
+    res.status(200).send('LOGISTATUS PRO - Servidor Activo OK');
 });
 
 // ==========================================
@@ -240,6 +235,24 @@ app.post('/api/notificar', async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 });
+window.forzarAlertasServidor = async function() {
+    if (!confirm("¿Desea enviar una alerta de prueba al servidor ahora mismo?")) return;
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/notificar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mensaje: "⚠️ Alerta forzada manualmente desde el panel de Soto Aduanas." })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            alert("✅ " + data.message);
+        } else {
+            alert("⚠️ Respuesta del servidor: " + (data.message || "Procesado con avisos"));
+        }
+    } catch (err) {
+        alert("❌ Error al conectar con el servidor: " + err.message);
+    }
+}
 
 // ==========================================
 // 4. TAREAS PROGRAMADAS EN SEGUNDO PLANO (CRON)
@@ -332,64 +345,52 @@ cron.schedule('0 10,18 * * *', async () => {
         }
 
         const wb = XLSX.utils.book_new();
-const wsMaster = XLSX.utils.aoa_to_sheet(masterRows);
+        const wsMaster = XLSX.utils.aoa_to_sheet(masterRows);
+        
+        const range = XLSX.utils.decode_range(wsMaster['!ref']);
+        wsMaster['!cols'] = anchosEspecificosXLSX.map(w => ({ wch: w }));
+        wsMaster['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: range.e.r, c: range.e.c } }) };
 
-const range = XLSX.utils.decode_range(wsMaster['!ref']);
-wsMaster['!cols'] = anchosEspecificosXLSX.map(w => ({ wch: w }));
-wsMaster['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: range.e.r, c: range.e.c } }) };
+        let currentSection = 1;
+        for (let R = range.s.r; R <= range.e.r; ++R) {
+            const cellA = wsMaster[XLSX.utils.encode_cell({ r: R, c: 0 })];
+            if (cellA && cellA.v && String(cellA.v).includes("▶")) {
+                if (String(cellA.v).includes("TRÁMITES")) currentSection = 2;
+                if (String(cellA.v).includes("DESPACHADOS")) currentSection = 3;
+                cellA.s = { font: { name: "Segoe UI", sz: 11, bold: true, color: { rgb: "1E3A8A" } }, alignment: { vertical: "center", horizontal: "left" } };
+                continue;
+            }
 
-wsMaster['!rows'] = [];
-for (let R = range.s.r; R <= range.e.r; ++R) {
-    const cellA = wsMaster[XLSX.utils.encode_cell({ r: R, c: 0 })];
-    if (cellA && cellA.v && String(cellA.v).includes("▶")) {
-        wsMaster['!rows'].push({ hpt: 30 });
-    } else if (cellA && cellA.v && excelHeaders.includes(cellA.v)) {
-        wsMaster['!rows'].push({ hpt: 43 });
-    } else {
-        wsMaster['!rows'].push({ hpt: 26.50 });
-    }
-}
+            for (let C = range.s.c; C <= range.e.c; ++C) {
+                const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+                if (!wsMaster[cellAddress]) continue;
 
-let currentSection = 1;
-for (let R = range.s.r; R <= range.e.r; ++R) {
-    const cellA = wsMaster[XLSX.utils.encode_cell({ r: R, c: 0 })];
-    if (cellA && cellA.v && String(cellA.v).includes("▶")) {
-        if (String(cellA.v).includes("TRÁMITES")) currentSection = 2;
-        if (String(cellA.v).includes("DESPACHADOS")) currentSection = 3;
-        cellA.s = { font: { name: "Segoe UI", sz: 11, bold: true, color: { rgb: "1E3A8A" } }, alignment: { vertical: "center", horizontal: "left" } };
-        continue;
-    }
+                let cellStyle = {
+                    border: blackBorder,
+                    alignment: { vertical: "center", horizontal: "center", wrapText: true },
+                    font: { name: "Segoe UI", sz: 10 }
+                };
 
-    for (let C = range.s.c; C <= range.e.c; ++C) {
-        const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
-        if (!wsMaster[cellAddress]) continue;
-
-        let cellStyle = {
-            border: blackBorder,
-            alignment: { vertical: "center", horizontal: "center", wrapText: true },
-            font: { name: "Segoe UI", sz: 10 }
-        };
-
-        const headerCheck = wsMaster[XLSX.utils.encode_cell({ r: R, c: 0 })];
-        if (headerCheck && excelHeaders.includes(headerCheck.v)) {
-            cellStyle.fill = { fgColor: { rgb: "1E3A8A" } };
-            cellStyle.font = { name: "Segoe UI", sz: 10, bold: true, color: { rgb: "FFFFFF" } };
-        } else {
-            cellStyle.font = { name: "Segoe UI", sz: 10, color: { rgb: "000000" }, bold: true };
-            if (currentSection === 3) {
-                cellStyle.fill = { fgColor: { rgb: "FEE2E2" } }; // Rojo claro para despachados
-            } else if (currentSection === 2) {
-                cellStyle.fill = { fgColor: { rgb: "D9E1F2" } }; // Azul claro para trámites
-            } else {
-                cellStyle.fill = { fgColor: { rgb: "FEF08A" } }; // Amarillo claro para por llegar
+                const headerCheck = wsMaster[XLSX.utils.encode_cell({ r: R, c: 0 })];
+                if (headerCheck && excelHeaders.includes(headerCheck.v)) {
+                    cellStyle.fill = { fgColor: { rgb: "1E3A8A" } };
+                    cellStyle.font = { name: "Segoe UI", sz: 10, bold: true, color: { rgb: "FFFFFF" } };
+                } else {
+                    cellStyle.font = { name: "Segoe UI", sz: 10, color: { rgb: "000000" }, bold: true };
+                    if (currentSection === 3) {
+                        cellStyle.fill = { fgColor: { rgb: "FEE2E2" } }; // Rojo claro para despachados
+                    } else if (currentSection === 2) {
+                        cellStyle.fill = { fgColor: { rgb: "D9E1F2" } }; // Azul claro para trámites
+                    } else {
+                        cellStyle.fill = { fgColor: { rgb: "FEF08A" } }; // Amarillo claro para por llegar
+                    }
+                }
+                wsMaster[cellAddress].s = cellStyle;
             }
         }
-        wsMaster[cellAddress].s = cellStyle;
-    }
-}
 
-XLSX.utils.book_append_sheet(wb, wsMaster, "Reporte Maestro Consolidado");
-const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer', cellStyles: true });
+        XLSX.utils.book_append_sheet(wb, wsMaster, "Reporte Maestro Consolidado");
+        const excelBase64String = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
 
         const mailOptionsAuto = {
             to: destinatariosAutomaticos,
