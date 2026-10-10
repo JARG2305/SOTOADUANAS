@@ -235,24 +235,6 @@ app.post('/api/notificar', async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 });
-window.forzarAlertasServidor = async function() {
-    if (!confirm("¿Desea enviar una alerta de prueba al servidor ahora mismo?")) return;
-    try {
-        const res = await fetch(`${BACKEND_URL}/api/notificar`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mensaje: "⚠️ Alerta forzada manualmente desde el panel de Soto Aduanas." })
-        });
-        const data = await res.json();
-        if (res.ok && data.success) {
-            alert("✅ " + data.message);
-        } else {
-            alert("⚠️ Respuesta del servidor: " + (data.message || "Procesado con avisos"));
-        }
-    } catch (err) {
-        alert("❌ Error al conectar con el servidor: " + err.message);
-    }
-}
 
 // ==========================================
 // 4. TAREAS PROGRAMADAS EN SEGUNDO PLANO (CRON)
