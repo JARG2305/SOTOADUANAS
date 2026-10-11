@@ -13,18 +13,36 @@
     <script>
         (function() {
             const autorizado = sessionStorage.getItem("soto_auth");
-            if (!autorizado) {
+            if (autorizado !== "true") {
                 const clave = prompt("🔒 Acceso Restringido - Soto Aduanas:\nIngrese la clave de autorización:");
+                
+                // Evaluamos estrictamente si la clave es la correcta
                 if (clave === "soto2026") {
                     sessionStorage.setItem("soto_auth", "true");
                 } else {
-                    alert("Acceso denegado.");
-                    document.documentElement.innerHTML = "<h2 style='text-align:center; margin-top:20vh; font-family:sans-serif; color:red;'>🔒 Acceso Restringido. Soto Aduanas.</h2>";
+                    // Si cancela (null) o pone una clave errónea, bloqueamos por completo
+                    alert("Acceso denegado o cancelado.");
+                    document.body.innerHTML = `
+                        <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #0f172a; color: #ef4444; font-family: sans-serif; text-align: center;">
+                            <div>
+                                <h1 style="font-size: 26px; font-weight: bold; margin-bottom: 12px;">🔒 Acceso Restringido</h1>
+                                <p style="color: #94a3b8; font-size: 15px;">Autorización denegada. Debe recargar la página e ingresar la clave correcta.</p>
+                            </div>
+                        </div>`;
                     throw new Error("No autorizado");
                 }
             }
         })();
 
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        navy: { 800: '#1e3a8a', 900: '#0f172a' }
+                    }
+                }
+            }
+        }
     </script>
     <style>
         .table-compact th {
@@ -330,44 +348,62 @@
 
         // Función para forzar las alertas formateadas verticalmente con la fecha ETA al final
         window.forzarAlertasServidor = async function() {
-            const contenedorAlertas = document.getElementById("alertsContainer");
-            if (!contenedorAlertas || contenedorAlertas.children.length === 0 || contenedorAlertas.innerText.includes("No hay alertas")) {
-                alert("⚠️ No hay alertas activas en este momento para enviar.");
-                return;
-            }
+    const contenedorAlertas = document.getElementById("alertsContainer");
+    if (!contenedorAlertas || contenedorAlertas.children.length === 0 || contenedorAlertas.innerText.includes("No hay alertas")) {
+        alert("⚠️ No hay alertas activas en este momento para enviar.");
+        return;
+    }
 
-            let textosAlertas = [];
-            Array.from(contenedorAlertas.children).forEach(div => {
-                if (div.innerText && !div.innerText.includes("No hay alertas")) {
-                    textosAlertas.push("• " + div.innerText.trim());
-                }
-            });
-
-            if (textosAlertas.length === 0) {
-                alert("⚠️ No se encontraron alertas válidas para forzar.");
-                return;
-            }
-
-            const mensajeConsolidado = "🚨 **ALERTAS OPERATIVAS Y ETA - SOTO ADUANAS** (Forzado Manual)\n\n" + textosAlertas.join("\n\n");
-
-            if (!confirm(`¿Desea enviar ${textosAlertas.length} alerta(s) activa(s) del panel a Telegram ahora mismo?`)) return;
-
-            try {
-                const res = await fetch(`${BACKEND_URL}/api/notificar`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ mensaje: mensajeConsolidado })
-                });
-                const data = await res.json();
-                if (res.ok && data.success) {
-                    alert("✅ Alertas enviadas a Telegram con éxito.");
-                } else {
-                    alert("⚠️ Respuesta del servidor: " + (data.message || "Procesado con avisos"));
-                }
-            } catch (err) {
-                alert("❌ Error al conectar con el servidor: " + err.message);
-            }
+    let textosAlertas = [];
+    
+    // Recorremos todos los elementos hijos del contenedor de forma segura
+    const itemsAlerta = contenedorAlertas.querySelectorAll("div");
+    itemsAlerta.forEach(div => {
+        let textoCrudo = div.innerText ? div.innerText.trim() : "";
+        // Evitamos duplicar textos contenedores y filtramos que no esté vacío
+        if (textoCrudo && !textoCrudo.includes("No hay alertas") && div.children.length === 0) {
+            let partes = textoCrudo.split(/\|/);
+            let lineasUnidas = partes.map(p => "• " + p.trim()).join("\n");
+            textosAlertas.push(lineasUnidas);
         }
+    });
+
+    // Si no capturó por nodos internos, respaldamos leyendo el texto completo dividido por saltos de línea del DOM
+    if (textosAlertas.length === 0 && contenedorAlertas.innerText) {
+        let lineasDom = contenedorAlertas.innerText.split("\n").map(l => l.trim()).filter(Boolean);
+        lineasDom.forEach(linea => {
+            if (!linea.includes("No hay alertas")) {
+                let partes = linea.split(/\|/);
+                textosAlertas.push(partes.map(p => "• " + p.trim()).join("\n"));
+            }
+        });
+    }
+
+    if (textosAlertas.length === 0) {
+        alert("⚠️ No se encontraron alertas válidas para forzar.");
+        return;
+    }
+
+    const mensajeConsolidado = "🚨 <b>ALERTAS OPERATIVAS Y ETA - SOTO ADUANAS</b> (Forzado Manual)\n\n" + textosAlertas.join("\n\n--------------------\n\n");
+
+    if (!confirm(`¿Desea enviar ${textosAlertas.length} alerta(s) activa(s) del panel a Telegram ahora mismo?`)) return;
+
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/notificar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mensaje: mensajeConsolidado })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            alert("✅ Alertas enviadas a Telegram con éxito.");
+        } else {
+            alert("⚠️ Respuesta del servidor: " + (data.message || "Procesado con avisos"));
+        }
+    } catch (err) {
+        alert("❌ Error al conectar con el servidor: " + err.message);
+    }
+}
 
         window.maskFecha = function(input) {
             let v = input.value.replace(/\D/g, "");
