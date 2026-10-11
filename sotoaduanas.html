@@ -347,38 +347,101 @@
         inicializarConfiguracion();
 
         // Función para forzar las alertas formateadas verticalmente con la fecha ETA al final
-        window.forzarAlertasServidor = async function() {
-    const contenedorAlertas = document.getElementById("alertsContainer");
-    if (!contenedorAlertas || contenedorAlertas.children.length === 0 || contenedorAlertas.innerText.includes("No hay alertas")) {
-        alert("⚠️ No hay alertas activas en este momento para enviar.");
+       window.forzarAlertasServidor = async function() {
+    // Verificamos si tenemos registros globales cargados en memoria
+    if (!allRecords || allRecords.length === 0) {
+        alert("⚠️ No hay registros cargados en el sistema.");
         return;
     }
 
     let textosAlertas = [];
-    // Seleccionamos únicamente los divs visibles que contienen texto de alerta válido
-    const itemsAlerta = contenedorAlertas.querySelectorAll("div");
-    
-    itemsAlerta.forEach(div => {
-        let textoCrudo = div.innerText ? div.innerText.trim() : "";
-        // Filtramos para asegurarnos de que sea una alerta visible real y no un contenedor vacío
-        if (textoCrudo && !textoCrudo.includes("No hay alertas") && div.children.length <= 1) {
-            // Limpiamos las barras horizontales de la web y convertimos cada campo en una línea con viñeta
-            let partes = textoCrudo.split(/\|/);
-            let lineasLimpias = partes.map(p => "• " + p.trim()).filter(p => p !== "•" && p.length > 2).join("\n");
-            if (lineasLimpias && !textosAlertas.includes(lineasLimpias)) {
-                textosAlertas.push(lineasLimpias);
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
+    let expSet = new Set();
+    let blSet = new Set();
+    let contSet = new Set();
+
+    // Recorremos todos los registros para evaluar y recopilar TODAS las alertas activas de ambas pestañas
+    allRecords.forEach(rec => {
+        const expVal = (rec.num_expediente || "").trim().toLowerCase();
+        const blVal = (rec.awb_bl || "").trim().toLowerCase();
+        const contRaw = (rec.numero_contenedor || "").trim();
+        let contenedoresList = contRaw ? contRaw.split(',').map(c => c.trim().toLowerCase()).filter(Boolean) : [];
+
+        const fechaEtaStr = rec.eta_la_guaira || rec.eta || rec.fecha_llegada || 'S/N';
+        const expName = rec.num_expediente || 'S/N';
+        const clientName = rec.cliente || 'S/C';
+        const esMaritimo = (rec.modo_transporte || "").toLowerCase().includes("aéreo") ? "✈️ AÉREO" : "🚢 MARÍTIMO";
+
+        // 1. Duplicados
+        if (expVal) {
+            if (expSet.has(expVal)) {
+                textosAlertas.push(`❗ EXPEDIENTE DUPLICADO\n• Vía: ${esMaritimo}\n• Expediente: ${rec.num_expediente}\n• 👤 Cliente: ${clientName}\n• Estado: Repetido en el sistema\n• 📅 Fecha ETA: ${fechaEtaStr}`);
+            }
+            expSet.add(expVal);
+        }
+        if (blVal && blVal !== 's/n') {
+            if (blSet.has(blVal)) {
+                textosAlertas.push(`❗ B/L O AWB DUPLICADO\n• Vía: ${esMaritimo}\n• B/L / AWB: ${rec.awb_bl}\n• 👤 Cliente: ${clientName}\n• Estado: Ya está usado\n• 📅 Fecha ETA: ${fechaEtaStr}`);
+            }
+            blSet.add(blVal);
+        }
+
+        contenedoresList.forEach(contVal => {
+            if (contSet.has(contVal)) {
+                textosAlertas.push(`❗ CONTENEDOR DUPLICADO\n• Contenedor: ${contVal.toUpperCase()}\n• 👤 Cliente: ${clientName}\n• Estado: Repetido\n• 📅 Fecha ETA: ${fechaEtaStr}`);
+            }
+            contSet.add(contVal);
+        });
+
+        if (rec.despacho) return;
+
+        // 2. Art. 45 LOA (Abandono Legal)
+        const dAbandonoLocal = parseFechaLocal(rec.fecha_abandono_legal);
+        if (dAbandonoLocal) {
+            const diffAbandono = Math.round((dAbandonoLocal - today) / (1000 * 60 * 60 * 24));
+            if (diffAbandono >= 0 && diffAbandono <= 3) {
+                const txtAbandono = diffAbandono === 0 ? "¡VENCE HOY!" : `Faltan ${diffAbandono}d`;
+                textosAlertas.push(`🚨 ALERTA ART. 45 LOA (ABANDONO LEGAL)\n• Vía: ${esMaritimo}\n• Exp: ${expName}\n• 👤 Cliente: ${clientName}\n• ⏳ Plazo: ${txtAbandono} (${rec.fecha_abandono_legal})\n• 📅 Fecha ETA: ${fechaEtaStr}`);
+            }
+        }
+
+        // 3. Art. 177 LOA (Multa / Vencimiento DAI)
+        if (rec.vencimiento_dai) {
+            const dVenc = parseFechaLocal(rec.vencimiento_dai);
+            if (dVenc) {
+                const diffVenc = Math.round((dVenc - today) / (1000 * 60 * 60 * 24));
+                if (diffVenc < 0) {
+                    textosAlertas.push(`🚨 ALERTA ART. 177 LOA (MULTA / VENCIDO)\n• Vía: ${esMaritimo}\n• Exp: ${expName}\n• 👤 Cliente: ${clientName}\n• ⏳ Estado: Vencido el ${rec.vencimiento_dai}\n• 📅 Fecha ETA: ${fechaEtaStr}`);
+                } else if (diffVenc >= 0 && diffVenc <= 4) {
+                    const txtVenc = diffVenc === 0 ? "¡VENCE HOY!" : `Faltan ${diffVenc}d`;
+                    textosAlertas.push(`⚠️ DAI PRÓXIMA A VENCER (RIESGO ART. 177 LOA)\n• Vía: ${esMaritimo}\n• Exp: ${expName}\n• 👤 Cliente: ${clientName}\n• ⏳ Vencimiento: ${txtVenc} (${rec.vencimiento_dai})\n• 📅 Fecha ETA: ${fechaEtaStr}`);
+                }
+            }
+        }
+
+        // 4. ETA Próximo
+        if (rec.eta || rec.eta_la_guaira) {
+            const dEta = parseFechaLocal(rec.eta || rec.eta_la_guaira);
+            if (dEta) {
+                const diffDays = Math.round((dEta - today) / (1000 * 60 * 60 * 24));
+                if (diffDays >= 0 && diffDays <= 5) {
+                    const txt = diffDays === 0 ? "¡LLEGA HOY!" : `Faltan ${diffDays}d`;
+                    textosAlertas.push(`🚢 ETA PRÓXIMO\n• Vía: ${esMaritimo}\n• Exp: ${expName}\n• 👤 Cliente: ${clientName}\n• ⏳ Tiempo: ${txt}\n• 📅 Fecha ETA: ${fechaEtaStr}`);
+                }
             }
         }
     });
 
     if (textosAlertas.length === 0) {
-        alert("⚠️ No se encontraron alertas visibles para enviar.");
+        alert("⚠️ No hay alertas activas en el sistema para enviar.");
         return;
     }
 
     const mensajeConsolidado = "🚨 <b>ALERTAS OPERATIVAS Y ETA - SOTO ADUANAS</b> (Forzado Manual)\n\n" + textosAlertas.join("\n\n--------------------\n\n");
 
-    if (!confirm(`¿Desea enviar exactamente ${textosAlertas.length} alerta(s) visible(s) del panel a Telegram ahora mismo?`)) return;
+    if (!confirm(`¿Desea enviar un total de ${textosAlertas.length} alerta(s) activa(s) (sumando ambas pestañas) a Telegram ahora mismo?`)) return;
 
     try {
         const res = await fetch(`${BACKEND_URL}/api/notificar`, {
