@@ -533,7 +533,7 @@
                         const diffVenc = Math.round((dVenc - today) / (1000 * 60 * 60 * 24));
                         if (diffVenc < 0) {
                             alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>🚨 ALERTA ART. 177 LOA (MULTA / VENCIDO)</b><br>• Vía: ${esMaritimo}<br>• Exp: <b>${expName}</b><br>• 👤 Cliente: <b>${clientName}</b><br>• ⏳ Estado: Vencido el ${rec.vencimiento_dai}<br>• 📅 Fecha ETA: <b>${fechaEtaStr}</b>` });
-                        } else if (diffVenc >= 0 && diffVencDays <= 4 || (diffVenc >= 0 && diffVenc <= 4)) {
+                        } else if (diffVenc >= 0 && diffVenc <= 4) {
                             const txtVenc = diffVenc === 0 ? "¡VENCE HOY!" : `Faltan ${diffVenc}d`;
                             alertsList.push({ categoria: 'operativa', type: 'warning', text: `<b>⚠️ RIESGO ART. 177 LOA (DAI PRÓXIMA)</b><br>• Vía: ${esMaritimo}<br>• Exp: <b>${expName}</b><br>• 👤 Cliente: <b>${clientName}</b><br>• ⏳ Vencimiento: ${txtVenc} (${rec.vencimiento_dai})<br>• 📅 Fecha ETA: <b>${fechaEtaStr}</b>` });
                         }
