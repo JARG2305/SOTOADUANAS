@@ -119,17 +119,13 @@ async function enviarAlertaTelegramServidor(mensajeTexto) {
     try {
         const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
         
-        let textoHtml = mensajeTexto
-            .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
-            .replace(/•/g, '▫️');
-
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 chat_id: TELEGRAM_CHAT_ID,
-                text: textoHtml,
-                parse_mode: 'HTML'
+                text: mensajeTexto,
+                parse_mode: null
             })
         });
         const data = await response.json();
@@ -165,7 +161,7 @@ async function enviarAlertaTelegramUnicaServidor(recId, tipoAlerta, mensajeTexto
         const checkRes = await fetch(checkUrl);
         
         if (checkRes.ok) {
-            return; 
+            return; // Ya se envió en esta franja horaria, se omite para evitar duplicados
         }
 
         await enviarAlertaTelegramServidor(mensajeTexto);
@@ -439,7 +435,7 @@ cron.schedule('0 9,12,15,18,19,20 * * *', async () => {
 
             if (expVal) {
                 if (expSet.has(expVal)) {
-                    const msgDuplicadoExp = `❗ **EXPEDIENTE DUPLICADO**\n• Vía: ${modoTextoLabel}\n• Expediente: ${rec.num_expediente}\n• Estado: Repetido en el sistema\n• Fecha ETA: ${fechaEtaStr}`;
+                    const msgDuplicadoExp = `❗ EXPEDIENTE DUPLICADO\n• Vía: ${modoTextoLabel}\n• Expediente: ${rec.num_expediente}\n• 👤 Cliente: ${clientName}\n• Estado: Repetido en el sistema\n• 📅 Fecha ETA: ${fechaEtaStr}`;
                     await enviarAlertaTelegramUnicaServidor(recIdUnico, 'duplicado_exp', msgDuplicadoExp);
                     alertasEnviadasCount++;
                 }
@@ -447,7 +443,7 @@ cron.schedule('0 9,12,15,18,19,20 * * *', async () => {
             }
             if (blVal && blVal !== 's/n') {
                 if (blSet.has(blVal)) {
-                    const msgDuplicadoBl = `❗ **B/L O AWB DUPLICADO**\n• Vía: ${modoTextoLabel}\n• B/L / AWB: ${rec.awb_bl}\n• Estado: Ya está usado en otro expediente\n• Fecha ETA: ${fechaEtaStr}`;
+                    const msgDuplicadoBl = `❗ B/L O AWB DUPLICADO\n• Vía: ${modoTextoLabel}\n• B/L / AWB: ${rec.awb_bl}\n• 👤 Cliente: ${clientName}\n• Estado: Ya está usado\n• 📅 Fecha ETA: ${fechaEtaStr}`;
                     await enviarAlertaTelegramUnicaServidor(recIdUnico, 'duplicado_bl', msgDuplicadoBl);
                     alertasEnviadasCount++;
                 }
@@ -462,39 +458,44 @@ cron.schedule('0 9,12,15,18,19,20 * * *', async () => {
             const fechaArriboObjetivo = rec.fecha_llegada || rec.eta_la_guaira;
             const dArriboObj = parseFechaLocalServidor(fechaArriboObjetivo);
 
-            if (!hasLlegadaRegistrada) {
-                const dVencimientoDai = parseFechaLocalServidor(rec.vencimiento_dai);
-                if (dVencimientoDai) {
-                    const diffVencDays = Math.round((dVencimientoDai - today) / (1000 * 60 * 60 * 24));
-                    if (diffVencDays >= 1 && diffVencDays <= 4) {
-                        let textoCountdown = diffVencDays === 1 ? "¡VENCE MAÑANA!" : `Faltan ${diffVencDays} día(s) para vencer`;
-                        const textTelegram = `⚠️ **DAI PRÓXIMA A VENCER**\n• Vía: ${modoTextoLabel}\n• Exp: ${expName}\n• Cliente: ${clientName}\n• Vencimiento: ${textoCountdown} (${rec.vencimiento_dai})\n• Fecha ETA: ${fechaEtaStr}`;
-                        
-                        await enviarAlertaTelegramUnicaServidor(recIdUnico, 'dai_venc', textTelegram);
-                        alertasEnviadasCount++;
-                    }
+            // Validación Artículo 45 de la LOA (Abandono Legal)
+            const dAbandono = parseFechaLocalServidor(rec.fecha_abandono_legal);
+            if (dAbandono) {
+                const diffAbandonoDays = Math.round((dAbandono - today) / (1000 * 60 * 60 * 24));
+                if (diffAbandonoDays >= 0 && diffAbandonoDays <= 3) {
+                    const txtAbandono = diffAbandonoDays === 0 ? "¡VENCE HOY!" : `Faltan ${diffAbandonoDays}d`;
+                    const msgArt45 = `🚨 ALERTA ART. 45 LOA (ABANDONO LEGAL)\n• Vía: ${modoTextoLabel}\n• Exp: ${expName}\n• 👤 Cliente: ${clientName}\n• ⏳ Plazo: ${txtAbandono} (${rec.fecha_abandono_legal})\n• 📅 Fecha ETA: ${fechaEtaStr}`;
+                    await enviarAlertaTelegramUnicaServidor(recIdUnico, 'art_45_abandono', msgArt45);
+                    alertasEnviadasCount++;
                 }
+            }
 
-                if (dArriboObj) {
-                    const diffLlegadaDays = Math.round((dArriboObj - today) / (1000 * 60 * 60 * 24));
-                    const maxDiasAnticipacion = esMaritimo ? 5 : 4;
-                    const minDiasAnticipacion = esMaritimo ? 2 : 1;
+            // Validación Artículo 177 de la LOA (Multas e infracciones por vencimiento de DAI)
+            const dVencimientoDai = parseFechaLocalServidor(rec.vencimiento_dai);
+            if (dVencimientoDai) {
+                const diffVencDays = Math.round((dVencimientoDai - today) / (1000 * 60 * 60 * 24));
+                if (diffVencDays < 0) {
+                    const msgArt177 = `🚨 ALERTA ART. 177 LOA (MULTA / VENCIDO)\n• Vía: ${modoTextoLabel}\n• Exp: ${expName}\n• 👤 Cliente: ${clientName}\n• ⏳ Estado: Vencido el ${rec.vencimiento_dai}\n• 📅 Fecha ETA: ${fechaEtaStr}`;
+                    await enviarAlertaTelegramUnicaServidor(recIdUnico, 'art_177_multa', msgArt177);
+                    alertasEnviadasCount++;
+                } else if (diffVencDays >= 1 && diffVencDays <= 4) {
+                    let textoCountdown = diffVencDays === 1 ? "¡VENCE MAÑANA!" : `Faltan ${diffVencDays}d`;
+                    const textTelegram = `⚠️ DAI PRÓXIMA A VENCER (RIESGO ART. 177 LOA)\n• Vía: ${modoTextoLabel}\n• Exp: ${expName}\n• 👤 Cliente: ${clientName}\n• ⏳ Vencimiento: ${textoCountdown} (${rec.vencimiento_dai})\n• 📅 Fecha ETA: ${fechaEtaStr}`;
+                    await enviarAlertaTelegramUnicaServidor(recIdUnico, 'dai_venc', textTelegram);
+                    alertasEnviadasCount++;
+                }
+            }
 
-                    if (diffLlegadaDays >= minDiasAnticipacion && diffLlegadaDays <= maxDiasAnticipacion) {
-                        const txtTiempo = diffLlegadaDays === 0 ? "¡LLEGA HOY!" : `Faltan ${diffLlegadaDays}d`;
-                        const textTelegram = `🚢 **ETA PRÓXIMO**\n• Vía: ${modoTextoLabel}\n• Exp: ${expName}\n• Cliente: ${clientName}\n• Tiempo: ${txtTiempo}\n• Fecha ETA: ${fechaEtaStr}`;
+            if (!hasLlegadaRegistrada && dArriboObj) {
+                const diffLlegadaDays = Math.round((dArriboObj - today) / (1000 * 60 * 60 * 24));
+                const maxDiasAnticipacion = esMaritimo ? 5 : 4;
+                const minDiasAnticipacion = esMaritimo ? 2 : 1;
 
-                        await enviarAlertaTelegramUnicaServidor(recIdUnico, 'cuenta_regresiva_eta', textTelegram);
-                        alertasEnviadasCount++;
-                    }
-
-                    const noTieneDai = !rec.fecha_registro_dai || rec.fecha_registro_dai.trim() === "";
-                    if (diffLlegadaDays <= maxDiasAnticipacion && noTieneDai) {
-                        const textTelegramDai = `⚠️ **FALTA REGISTRAR DAI**\n• Vía: ${modoTextoLabel}\n• Exp: ${expName}\n• Cliente: ${clientName}\n• Detalle: Arribo cercano sin registro DAI\n• Fecha ETA: ${fechaEtaStr}`;
-
-                        await enviarAlertaTelegramUnicaServidor(recIdUnico, 'falta_reg_dai', textTelegramDai);
-                        alertasEnviadasCount++;
-                    }
+                if (diffLlegadaDays >= minDiasAnticipacion && diffLlegadaDays <= maxDiasAnticipacion) {
+                    const txtTiempo = diffLlegadaDays === 0 ? "¡LLEGA HOY!" : `Faltan ${diffLlegadaDays}d`;
+                    const textTelegram = `🚢 ETA PRÓXIMO\n• Vía: ${modoTextoLabel}\n• Exp: ${expName}\n• 👤 Cliente: ${clientName}\n• ⏳ Tiempo: ${txtTiempo}\n• 📅 Fecha ETA: ${fechaEtaStr}`;
+                    await enviarAlertaTelegramUnicaServidor(recIdUnico, 'cuenta_regresiva_eta', textTelegram);
+                    alertasEnviadasCount++;
                 }
             }
         }

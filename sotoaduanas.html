@@ -387,7 +387,7 @@
         return;
     }
 
-    const mensajeConsolidado = "🚨 <b>ALERTAS OPERATIVAS Y ETA - SOTO ADUANAS</b> (Forzado Manual)\n\n" + textosAlertas.join("\n\n--------------------\n\n");
+    const mensajeConsolidado = "🚨 <b>ALERTAS OPERATIVAS Y ETA - SOTO ADUANAS</b>\n\n" + textosAlertas.join("\n\n--------------------\n\n");
 
     if (!confirm(`¿Desea enviar ${textosAlertas.length} alerta(s) activa(s) del panel a Telegram ahora mismo?`)) return;
 
@@ -489,53 +489,64 @@
                 const contRaw = (rec.numero_contenedor || "").trim();
                 let contenedoresList = contRaw ? contRaw.split(',').map(c => c.trim().toLowerCase()).filter(Boolean) : [];
 
-                const fechaEtaStr = rec.eta || 'S/N';
+                const fechaEtaStr = rec.eta_la_guaira || rec.eta || rec.fecha_llegada || 'S/N';
+                const expName = rec.num_expediente || 'S/N';
+                const clientName = rec.cliente || 'S/C';
+                const esMaritimo = (rec.modo_transporte || "").toLowerCase().includes("aéreo") ? "✈️ AÉREO" : "🚢 MARÍTIMO";
 
                 if (expVal) {
                     if (expSet.has(expVal)) {
-                        alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>❗ EXPEDIENTE DUPLICADO:</b> Exp: <b>${rec.num_expediente}</b> | Estado: Repetido | 📅 ETA: <b>${fechaEtaStr}</b>` });
+                        alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>❗ EXPEDIENTE DUPLICADO</b><br>• Vía: ${esMaritimo}<br>• Expediente: ${rec.num_expediente}<br>• 👤 Cliente: <b>${clientName}</b><br>• Estado: Repetido<br>• 📅 Fecha ETA: <b>${fechaEtaStr}</b>` });
                     }
                     expSet.add(expVal);
                 }
                 if (blVal && blVal !== 's/n') {
                     if (blSet.has(blVal)) {
-                        alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>❗ B/L O AWB DUPLICADO:</b> BL: <b>${rec.awb_bl}</b> | Estado: Ya usado | 📅 ETA: <b>${fechaEtaStr}</b>` });
+                        alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>❗ B/L O AWB DUPLICADO</b><br>• Vía: ${esMaritimo}<br>• B/L / AWB: ${rec.awb_bl}<br>• 👤 Cliente: <b>${clientName}</b><br>• Estado: Ya usado<br>• 📅 Fecha ETA: <b>${fechaEtaStr}</b>` });
                     }
                     blSet.add(blVal);
                 }
 
                 contenedoresList.forEach(contVal => {
                     if (contSet.has(contVal)) {
-                        alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>❗ CONTENEDOR DUPLICADO:</b> Contenedor: <b>${contVal.toUpperCase()}</b> | Estado: Repetido | 📅 ETA: <b>${fechaEtaStr}</b>` });
+                        alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>❗ CONTENEDOR DUPLICADO</b><br>• Contenedor: <b>${contVal.toUpperCase()}</b><br>• 👤 Cliente: <b>${clientName}</b><br>• Estado: Repetido<br>• 📅 Fecha ETA: <b>${fechaEtaStr}</b>` });
                     }
                     contSet.add(contVal);
                 });
 
                 if (rec.despacho) return;
 
-                const expName = rec.num_expediente || 'S/N';
-                const clientName = rec.cliente || 'S/C';
-
-                if (rec.eta) {
-                    const dEta = parseFechaLocal(rec.eta);
-                    if (dEta) {
-                        const diffDays = Math.round((dEta - today) / (1000 * 60 * 60 * 24));
-                        if (diffDays >= 0 && diffDays <= 5) {
-                            const txt = diffDays === 0 ? "¡LLEGA HOY!" : `Faltan ${diffDays}d`;
-                            alertsList.push({ categoria: 'eta', type: 'warning', text: `<b>🚢 ETA PRÓXIMO:</b> Exp: <b>${expName}</b> | Cliente: <b>${clientName}</b> | ⏳ ${txt} | 📅 ETA: <b>${fechaEtaStr}</b>` });
-                        }
+                // Validación Artículo 45 LOA (Abandono Legal)
+                const dAbandonoLocal = parseFechaLocal(rec.fecha_abandono_legal);
+                if (dAbandonoLocal) {
+                    const diffAbandono = Math.round((dAbandonoLocal - today) / (1000 * 60 * 60 * 24));
+                    if (diffAbandono >= 0 && diffAbandono <= 3) {
+                        const txtAbandono = diffAbandono === 0 ? "¡VENCE HOY!" : `Faltan ${diffAbandono}d`;
+                        alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>🚨 ALERTA ART. 45 LOA (ABANDONO LEGAL)</b><br>• Vía: ${esMaritimo}<br>• Exp: <b>${expName}</b><br>• 👤 Cliente: <b>${clientName}</b><br>• ⏳ Plazo: ${txtAbandono} (${rec.fecha_abandono_legal})<br>• 📅 Fecha ETA: <b>${fechaEtaStr}</b>` });
                     }
                 }
 
+                // Validación Artículo 177 LOA (Multa / Vencimiento DAI)
                 if (rec.vencimiento_dai) {
                     const dVenc = parseFechaLocal(rec.vencimiento_dai);
                     if (dVenc) {
                         const diffVenc = Math.round((dVenc - today) / (1000 * 60 * 60 * 24));
-                        if (diffVenc >= 0 && diffVenc <= 4) {
+                        if (diffVenc < 0) {
+                            alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>🚨 ALERTA ART. 177 LOA (MULTA / VENCIDO)</b><br>• Vía: ${esMaritimo}<br>• Exp: <b>${expName}</b><br>• 👤 Cliente: <b>${clientName}</b><br>• ⏳ Estado: Vencido el ${rec.vencimiento_dai}<br>• 📅 Fecha ETA: <b>${fechaEtaStr}</b>` });
+                        } else if (diffVenc >= 0 && diffVencDays <= 4 || (diffVenc >= 0 && diffVenc <= 4)) {
                             const txtVenc = diffVenc === 0 ? "¡VENCE HOY!" : `Faltan ${diffVenc}d`;
-                            alertsList.push({ categoria: 'operativa', type: 'warning', text: `<b>⚠️ DAI PRÓXIMA A VENCER:</b> Exp: <b>${expName}</b> | Cliente: <b>${clientName}</b> | ⏳ ${txtVenc} (${rec.vencimiento_dai}) | 📅 ETA: <b>${fechaEtaStr}</b>` });
-                        } else if (diffVenc < 0) {
-                            alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>🚨 DAI VENCIDA:</b> Exp: <b>${expName}</b> | Cliente: <b>${clientName}</b> | ⚠️ Venció el ${rec.vencimiento_dai} | 📅 ETA: <b>${fechaEtaStr}</b>` });
+                            alertsList.push({ categoria: 'operativa', type: 'warning', text: `<b>⚠️ RIESGO ART. 177 LOA (DAI PRÓXIMA)</b><br>• Vía: ${esMaritimo}<br>• Exp: <b>${expName}</b><br>• 👤 Cliente: <b>${clientName}</b><br>• ⏳ Vencimiento: ${txtVenc} (${rec.vencimiento_dai})<br>• 📅 Fecha ETA: <b>${fechaEtaStr}</b>` });
+                        }
+                    }
+                }
+
+                if (rec.eta || rec.eta_la_guaira) {
+                    const dEta = parseFechaLocal(rec.eta || rec.eta_la_guaira);
+                    if (dEta) {
+                        const diffDays = Math.round((dEta - today) / (1000 * 60 * 60 * 24));
+                        if (diffDays >= 0 && diffDays <= 5) {
+                            const txt = diffDays === 0 ? "¡LLEGA HOY!" : `Faltan ${diffDays}d`;
+                            alertsList.push({ categoria: 'eta', type: 'warning', text: `<b>🚢 ETA PRÓXIMO</b><br>• Vía: ${esMaritimo}<br>• Exp: <b>${expName}</b><br>• 👤 Cliente: <b>${clientName}</b><br>• ⏳ Tiempo: ${txt}<br>• 📅 Fecha ETA: <b>${fechaEtaStr}</b>` });
                         }
                     }
                 }
@@ -554,7 +565,7 @@
                 if (filtradas.length > 0) {
                     filtradas.forEach(alert => {
                         const div = document.createElement("div");
-                        div.className = `p-2.5 rounded-lg border flex items-center justify-between gap-2 text-xs ${alert.type === 'danger' ? 'bg-red-50 border-red-200 text-red-700 font-semibold' : 'bg-amber-50 border-amber-200 text-amber-800'}`;
+                        div.className = `p-3 rounded-lg border flex flex-col gap-1 text-xs ${alert.type === 'danger' ? 'bg-red-50 border-red-200 text-red-700 font-semibold' : 'bg-amber-50 border-amber-200 text-amber-800'}`;
                         div.innerHTML = `<span>${alert.text}</span>`;
                         container.appendChild(div);
                     });
