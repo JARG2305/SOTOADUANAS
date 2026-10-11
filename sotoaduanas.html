@@ -355,26 +355,29 @@
     }
 
     let textosAlertas = [];
-    
-    // Recorremos todos los elementos hijos del contenedor de forma segura
     const itemsAlerta = contenedorAlertas.querySelectorAll("div");
+    
     itemsAlerta.forEach(div => {
         let textoCrudo = div.innerText ? div.innerText.trim() : "";
-        // Evitamos duplicar textos contenedores y filtramos que no esté vacío
         if (textoCrudo && !textoCrudo.includes("No hay alertas") && div.children.length === 0) {
+            // Reemplazamos cualquier barra lateral o separador horizontal por saltos de línea estrictos
             let partes = textoCrudo.split(/\|/);
-            let lineasUnidas = partes.map(p => "• " + p.trim()).join("\n");
-            textosAlertas.push(lineasUnidas);
+            let lineasLimpias = partes.map(p => "• " + p.trim()).filter(p => p !== "•").join("\n");
+            if (lineasLimpias) {
+                textosAlertas.push(lineasLimpias);
+            }
         }
     });
 
-    // Si no capturó por nodos internos, respaldamos leyendo el texto completo dividido por saltos de línea del DOM
     if (textosAlertas.length === 0 && contenedorAlertas.innerText) {
         let lineasDom = contenedorAlertas.innerText.split("\n").map(l => l.trim()).filter(Boolean);
         lineasDom.forEach(linea => {
             if (!linea.includes("No hay alertas")) {
                 let partes = linea.split(/\|/);
-                textosAlertas.push(partes.map(p => "• " + p.trim()).join("\n"));
+                let lineasLimpias = partes.map(p => "• " + p.trim()).filter(p => p !== "•").join("\n");
+                if (lineasLimpias) {
+                    textosAlertas.push(lineasLimpias);
+                }
             }
         });
     }
@@ -384,7 +387,7 @@
         return;
     }
 
-    const mensajeConsolidado = "🚨 <b>ALERTAS OPERATIVAS Y ETA - SOTO ADUANAS</b>\n\n" + textosAlertas.join("\n\n--------------------\n\n");
+    const mensajeConsolidado = "🚨 <b>ALERTAS OPERATIVAS Y ETA - SOTO ADUANAS</b> (Forzado Manual)\n\n" + textosAlertas.join("\n\n--------------------\n\n");
 
     if (!confirm(`¿Desea enviar ${textosAlertas.length} alerta(s) activa(s) del panel a Telegram ahora mismo?`)) return;
 
