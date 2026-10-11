@@ -273,7 +273,24 @@ app.post('/api/notificar', async (req, res) => {
         if (!mensaje) {
             return res.status(400).json({ success: false, message: 'Falta el mensaje de alerta.' });
         }
-        await enviarAlertaTelegramServidor(mensaje);
+        
+        const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: TELEGRAM_CHAT_ID,
+                text: mensaje,
+                parse_mode: 'HTML'
+            })
+        });
+        
+        const data = await response.json();
+        if (!data.ok) {
+            console.error("❌ Error detallado de Telegram:", data);
+            return res.status(400).json({ success: false, message: `Telegram rechazó el mensaje: ${data.description}` });
+        }
+
         res.json({ success: true, message: "Alerta enviada a Telegram con éxito." });
     } catch (error) {
         console.error("❌ Error en /api/notificar:", error);
