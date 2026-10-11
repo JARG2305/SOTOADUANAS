@@ -403,7 +403,7 @@
             const diffAbandono = Math.round((dAbandonoLocal - today) / (1000 * 60 * 60 * 24));
             if (diffAbandono >= 0 && diffAbandono <= 3) {
                 const txtAbandono = diffAbandono === 0 ? "¡VENCE HOY!" : `Faltan ${diffAbandono}d`;
-                textosAlertas.push(`🚨 ALERTA ART. 45 LOA (ABANDONO LEGAL)\n• Vía: ${esMaritimo}\n• Exp: ${expName}\n• 👤 Cliente: ${clientName}\n• ⏳ Plazo: ${txtAbandono} (${rec.fecha_abandono_legal})\n• 📅 Fecha ETA: ${fechaEtaStr}`);
+                textosAlertas.push(`🚨 ALERTA ABANDONO LEGAL\n• Vía: ${esMaritimo}\n• Exp: ${expName}\n• 👤 Cliente: ${clientName}\n• ⏳ Plazo: ${txtAbandono} (${rec.fecha_abandono_legal})\n• 📅 Fecha ETA: ${fechaEtaStr}`);
             }
         }
 
@@ -413,10 +413,10 @@
             if (dVenc) {
                 const diffVenc = Math.round((dVenc - today) / (1000 * 60 * 60 * 24));
                 if (diffVenc < 0) {
-                    textosAlertas.push(`🚨 ALERTA ART. 177 LOA (MULTA / VENCIDO)\n• Vía: ${esMaritimo}\n• Exp: ${expName}\n• 👤 Cliente: ${clientName}\n• ⏳ Estado: Vencido el ${rec.vencimiento_dai}\n• 📅 Fecha ETA: ${fechaEtaStr}`);
+                    textosAlertas.push(`🚨 ALERTA ART. 177 NUMERAL 9 DE LA  LOA (MULTA / VENCIDO)\n• Vía: ${esMaritimo}\n• Exp: ${expName}\n• 👤 Cliente: ${clientName}\n• ⏳ Estado: Vencido el ${rec.vencimiento_dai}\n• 📅 Fecha ETA: ${fechaEtaStr}`);
                 } else if (diffVenc >= 0 && diffVenc <= 4) {
                     const txtVenc = diffVenc === 0 ? "¡VENCE HOY!" : `Faltan ${diffVenc}d`;
-                    textosAlertas.push(`⚠️ DAI PRÓXIMA A VENCER (RIESGO ART. 177 LOA)\n• Vía: ${esMaritimo}\n• Exp: ${expName}\n• 👤 Cliente: ${clientName}\n• ⏳ Vencimiento: ${txtVenc} (${rec.vencimiento_dai})\n• 📅 Fecha ETA: ${fechaEtaStr}`);
+                    textosAlertas.push(`⚠️ DAI PRÓXIMA A VENCER (RIESGO MULTA ART. 177 NUM 9 LOA)\n• Vía: ${esMaritimo}\n• Exp: ${expName}\n• 👤 Cliente: ${clientName}\n• ⏳ Vencimiento: ${txtVenc} (${rec.vencimiento_dai})\n• 📅 Fecha ETA: ${fechaEtaStr}`);
                 }
             }
         }
@@ -574,7 +574,7 @@
                     const diffAbandono = Math.round((dAbandonoLocal - today) / (1000 * 60 * 60 * 24));
                     if (diffAbandono >= 0 && diffAbandono <= 3) {
                         const txtAbandono = diffAbandono === 0 ? "¡VENCE HOY!" : `Faltan ${diffAbandono}d`;
-                        alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>🚨 ART. 45 LOA (ABANDONO):</b> Vía: ${esMaritimo} | Exp: <b>${expName}</b> | 👤 Cliente: <b>${clientName}</b> | ⏳ Plazo: ${txtAbandono} (${rec.fecha_abandono_legal}) | 📅 ETA: <b>${fechaEtaStr}</b>` });
+                        alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>🚨 ABANDONO LEGAL:</b> Vía: ${esMaritimo} | Exp: <b>${expName}</b> | 👤 Cliente: <b>${clientName}</b> | ⏳ Plazo: ${txtAbandono} (${rec.fecha_abandono_legal}) | 📅 ETA: <b>${fechaEtaStr}</b>` });
                     }
                 }
 
@@ -584,10 +584,10 @@
                     if (dVenc) {
                         const diffVenc = Math.round((dVenc - today) / (1000 * 60 * 60 * 24));
                         if (diffVenc < 0) {
-                            alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>🚨 ART. 177 LOA (MULTA):</b> Vía: ${esMaritimo} | Exp: <b>${expName}</b> | 👤 Cliente: <b>${clientName}</b> | ⏳ Vencido el ${rec.vencimiento_dai} | 📅 ETA: <b>${fechaEtaStr}</b>` });
+                            alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>🚨 MULTA ART. 177 NUM 9 DE LA LOA: </b> Vía: ${esMaritimo} | Exp: <b>${expName}</b> | 👤 Cliente: <b>${clientName}</b> | ⏳ Vencido el ${rec.vencimiento_dai} | 📅 ETA: <b>${fechaEtaStr}</b>` });
                         } else if (diffVenc >= 0 && diffVenc <= 4) {
                             const txtVenc = diffVenc === 0 ? "¡VENCE HOY!" : `Faltan ${diffVenc}d`;
-                            alertsList.push({ categoria: 'operativa', type: 'warning', text: `<b>⚠️ RIESGO ART. 177:</b> Vía: ${esMaritimo} | Exp: <b>${expName}</b> | 👤 Cliente: <b>${clientName}</b> | ⏳ Vencimiento: ${txtVenc} (${rec.vencimiento_dai}) | 📅 ETA: <b>${fechaEtaStr}</b>` });
+                            alertsList.push({ categoria: 'operativa', type: 'warning', text: `<b>⚠️ RIESGO MULTA ART. 177 NUM 9 DE LA LOA:</b> Vía: ${esMaritimo} | Exp: <b>${expName}</b> | 👤 Cliente: <b>${clientName}</b> | ⏳ Vencimiento: ${txtVenc} (${rec.vencimiento_dai}) | 📅 ETA: <b>${fechaEtaStr}</b>` });
                         }
                     }
                 }
