@@ -118,15 +118,19 @@ async function enviarCorreoSistema(opcionesMail) {
 async function enviarAlertaTelegramServidor(mensajeTexto) {
     try {
         const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
-        const textoLimpio = mensajeTexto.replace(/\\n/g, '\n');
+        
+        // Convertimos el formato Markdown a etiquetas HTML compatibles con Telegram que respetan los saltos de línea
+        let textoHtml = mensajeTexto
+            .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
+            .replace(/•/g, '▫️');
 
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 chat_id: TELEGRAM_CHAT_ID,
-                text: textoLimpio,
-                parse_mode: 'Markdown'
+                text: textoHtml,
+                parse_mode: 'HTML'
             })
         });
         const data = await response.json();

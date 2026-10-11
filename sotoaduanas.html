@@ -19,21 +19,12 @@
                     sessionStorage.setItem("soto_auth", "true");
                 } else {
                     alert("Acceso denegado.");
-                    document.body.innerHTML = "<h2 style='text-align:center; margin-top:20vh; font-family:sans-serif; color:red;'>🔒 Acceso Restringido. Soto Aduanas.</h2>";
+                    document.documentElement.innerHTML = "<h2 style='text-align:center; margin-top:20vh; font-family:sans-serif; color:red;'>🔒 Acceso Restringido. Soto Aduanas.</h2>";
                     throw new Error("No autorizado");
                 }
             }
         })();
 
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        navy: { 800: '#1e3a8a', 900: '#0f172a' }
-                    }
-                }
-            }
-        }
     </script>
     <style>
         .table-compact th {
