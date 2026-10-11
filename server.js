@@ -119,7 +119,6 @@ async function enviarAlertaTelegramServidor(mensajeTexto) {
     try {
         const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
         
-        // Convertimos el formato Markdown a etiquetas HTML compatibles con Telegram que respetan los saltos de línea
         let textoHtml = mensajeTexto
             .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
             .replace(/•/g, '▫️');
@@ -424,7 +423,6 @@ cron.schedule('0 9,12,15,18,19,20 * * *', async () => {
 
         let expSet = new Set();
         let blSet = new Set();
-        let contSet = new Set();
         let alertasEnviadasCount = 0;
 
         for (const rec of records) {
@@ -436,9 +434,12 @@ cron.schedule('0 9,12,15,18,19,20 * * *', async () => {
             const expName = rec.num_expediente || 'S/N';
             const clientName = rec.cliente || 'S/C';
 
+            const esMaritimo = identificarEsMaritimoServidor(rec);
+            const modoTextoLabel = esMaritimo ? "🚢 MARÍTIMO" : "✈️ AÉREO";
+
             if (expVal) {
                 if (expSet.has(expVal)) {
-                    const msgDuplicadoExp = `❗ **EXPEDIENTE DUPLICADO**\n• Expediente: ${rec.num_expediente}\n• Estado: Repetido en el sistema\n• Fecha ETA: ${fechaEtaStr}`;
+                    const msgDuplicadoExp = `❗ **EXPEDIENTE DUPLICADO**\n• Vía: ${modoTextoLabel}\n• Expediente: ${rec.num_expediente}\n• Estado: Repetido en el sistema\n• Fecha ETA: ${fechaEtaStr}`;
                     await enviarAlertaTelegramUnicaServidor(recIdUnico, 'duplicado_exp', msgDuplicadoExp);
                     alertasEnviadasCount++;
                 }
@@ -446,7 +447,7 @@ cron.schedule('0 9,12,15,18,19,20 * * *', async () => {
             }
             if (blVal && blVal !== 's/n') {
                 if (blSet.has(blVal)) {
-                    const msgDuplicadoBl = `❗ **B/L O AWB DUPLICADO**\n• B/L / AWB: ${rec.awb_bl}\n• Estado: Ya está usado en otro expediente\n• Fecha ETA: ${fechaEtaStr}`;
+                    const msgDuplicadoBl = `❗ **B/L O AWB DUPLICADO**\n• Vía: ${modoTextoLabel}\n• B/L / AWB: ${rec.awb_bl}\n• Estado: Ya está usado en otro expediente\n• Fecha ETA: ${fechaEtaStr}`;
                     await enviarAlertaTelegramUnicaServidor(recIdUnico, 'duplicado_bl', msgDuplicadoBl);
                     alertasEnviadasCount++;
                 }
@@ -455,7 +456,6 @@ cron.schedule('0 9,12,15,18,19,20 * * *', async () => {
 
             if (rec.despacho) continue;
 
-            const esMaritimo = identificarEsMaritimoServidor(rec);
             const fechaLlegadaStr = rec.fecha_llegada;
             const hasLlegadaRegistrada = Boolean(fechaLlegadaStr && fechaLlegadaStr.trim() !== "");
 
@@ -468,7 +468,7 @@ cron.schedule('0 9,12,15,18,19,20 * * *', async () => {
                     const diffVencDays = Math.round((dVencimientoDai - today) / (1000 * 60 * 60 * 24));
                     if (diffVencDays >= 1 && diffVencDays <= 4) {
                         let textoCountdown = diffVencDays === 1 ? "¡VENCE MAÑANA!" : `Faltan ${diffVencDays} día(s) para vencer`;
-                        const textTelegram = `⚠️ **DAI PRÓXIMA A VENCER**\n• Exp: ${expName}\n• Cliente: ${clientName}\n• Vencimiento: ${textoCountdown} (${rec.vencimiento_dai})\n• Fecha ETA: ${fechaEtaStr}`;
+                        const textTelegram = `⚠️ **DAI PRÓXIMA A VENCER**\n• Vía: ${modoTextoLabel}\n• Exp: ${expName}\n• Cliente: ${clientName}\n• Vencimiento: ${textoCountdown} (${rec.vencimiento_dai})\n• Fecha ETA: ${fechaEtaStr}`;
                         
                         await enviarAlertaTelegramUnicaServidor(recIdUnico, 'dai_venc', textTelegram);
                         alertasEnviadasCount++;
@@ -481,9 +481,8 @@ cron.schedule('0 9,12,15,18,19,20 * * *', async () => {
                     const minDiasAnticipacion = esMaritimo ? 2 : 1;
 
                     if (diffLlegadaDays >= minDiasAnticipacion && diffLlegadaDays <= maxDiasAnticipacion) {
-                        const modoTexto = esMaritimo ? "MARÍTIMO" : "AÉREO";
                         const txtTiempo = diffLlegadaDays === 0 ? "¡LLEGA HOY!" : `Faltan ${diffLlegadaDays}d`;
-                        const textTelegram = `🚢 **ETA PRÓXIMO (${modoTexto})**\n• Exp: ${expName}\n• Cliente: ${clientName}\n• Tiempo: ${txtTiempo}\n• Fecha ETA: ${fechaEtaStr}`;
+                        const textTelegram = `🚢 **ETA PRÓXIMO**\n• Vía: ${modoTextoLabel}\n• Exp: ${expName}\n• Cliente: ${clientName}\n• Tiempo: ${txtTiempo}\n• Fecha ETA: ${fechaEtaStr}`;
 
                         await enviarAlertaTelegramUnicaServidor(recIdUnico, 'cuenta_regresiva_eta', textTelegram);
                         alertasEnviadasCount++;
@@ -491,7 +490,7 @@ cron.schedule('0 9,12,15,18,19,20 * * *', async () => {
 
                     const noTieneDai = !rec.fecha_registro_dai || rec.fecha_registro_dai.trim() === "";
                     if (diffLlegadaDays <= maxDiasAnticipacion && noTieneDai) {
-                        const textTelegramDai = `⚠️ **FALTA REGISTRAR DAI**\n• Exp: ${expName}\n• Cliente: ${clientName}\n• Detalle: Arribo cercano sin registro DAI\n• Fecha ETA: ${fechaEtaStr}`;
+                        const textTelegramDai = `⚠️ **FALTA REGISTRAR DAI**\n• Vía: ${modoTextoLabel}\n• Exp: ${expName}\n• Cliente: ${clientName}\n• Detalle: Arribo cercano sin registro DAI\n• Fecha ETA: ${fechaEtaStr}`;
 
                         await enviarAlertaTelegramUnicaServidor(recIdUnico, 'falta_reg_dai', textTelegramDai);
                         alertasEnviadasCount++;
