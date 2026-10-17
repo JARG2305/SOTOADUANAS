@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>LOGISTATUS PRO - Vista Ejecutiva Esencial</title>
+    <title>SOTO ADUANAS - Control Logístico & Aduanas</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS con soporte para estilos avanzados -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
     <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -15,12 +17,9 @@
             const autorizado = sessionStorage.getItem("soto_auth");
             if (autorizado !== "true") {
                 const clave = prompt("🔒 Acceso Restringido - Soto Aduanas:\nIngrese la clave de autorización:");
-                
-                // Evaluamos estrictamente si la clave es la correcta
                 if (clave === "soto2026") {
                     sessionStorage.setItem("soto_auth", "true");
                 } else {
-                    // Si cancela (null) o pone una clave errónea, bloqueamos por completo
                     alert("Acceso denegado o cancelado.");
                     document.body.innerHTML = `
                         <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #0f172a; color: #ef4444; font-family: sans-serif; text-align: center;">
@@ -55,13 +54,33 @@
             height: 42px;
         }
         .table-compact td {
+            max-width: 160px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
         .col-exp { width: 95px !important; min-width: 95px !important; max-width: 95px !important; text-align: center; }
         .col-despacho { width: 110px !important; min-width: 110px !important; max-width: 110px !important; text-align: center; }
-        
+
+        @keyframes trafficRed {
+            0%, 25% { background-color: #ef4444; box-shadow: 0 0 8px #ef4444; opacity: 1; }
+            35%, 100% { background-color: #334155; box-shadow: none; opacity: 0.35; }
+        }
+        @keyframes trafficYellow {
+            0%, 30% { background-color: #334155; box-shadow: none; opacity: 0.35; }
+            35%, 60% { background-color: #f59e0b; box-shadow: 0 0 8px #f59e0b; opacity: 1; }
+            70%, 100% { background-color: #334155; box-shadow: none; opacity: 0.35; }
+        }
+        @keyframes trafficGreen {
+            0%, 65% { background-color: #334155; box-shadow: none; opacity: 0.35; }
+            70%, 95% { background-color: #10b981; box-shadow: 0 0 8px #10b981; opacity: 1; }
+            100% { background-color: #334155; box-shadow: none; opacity: 0.35; }
+        }
+
+        .anim-red { animation: trafficRed 2.4s infinite; }
+        .anim-yellow { animation: trafficYellow 2.4s infinite; }
+        .anim-green { animation: trafficGreen 2.4s infinite; }
+
         .tab-btn {
             height: 60px;
             display: flex;
@@ -79,38 +98,66 @@
             
             <div class="flex items-center gap-4 bg-slate-950/80 border border-blue-500/40 px-5 py-2.5 rounded-2xl shadow">
                 <div class="flex items-center justify-center w-11 h-11 rounded-xl bg-gradient-to-tr from-blue-700 via-indigo-600 to-cyan-500 text-white font-black">
-                    LP
+                    LS
                 </div>
                 <div class="flex flex-col">
                     <div class="flex items-center gap-1.5">
                         <span class="text-xl font-black tracking-wider text-white">
-                            LOGI<span class="text-cyan-400">STATUS</span>
+                            LOGISTATUS<span class="text-cyan-400">PRO</span>
                         </span>
-                        <span class="text-[9px] font-black px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/40">LITE</span>
+                        <span class="text-[9px] font-black px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/40">PRO</span>
                     </div>
-                    <span class="text-[9px] text-slate-300 tracking-[0.15em] uppercase font-bold">Vista Ejecutiva Esencial</span>
+                    <span class="text-[9px] text-slate-300 tracking-[0.15em] uppercase font-bold">Control Logístico & Aduanas</span>
                 </div>
             </div>
 
             <!-- Botones de Acción -->
             <div class="flex items-center gap-3">
-                
                 <button type="button" onclick="openModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow">
                     ➕ Nuevo Expediente
                 </button>
-		<button type="button" onclick="forzarAlertasServidor()" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow" title="Disparar alertas manualmente en el servidor">
+                <button type="button" onclick="forzarAlertasServidor()" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow" title="Disparar alertas manualmente en el servidor">
                     ⚡ Forzar Alertas
                 </button>
                 <button type="button" onclick="openArchiveModal()" class="bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 px-4 py-2.5 rounded-xl text-xs font-bold transition shadow">
                     📁 Archivo Histórico
                 </button>
+
+                <!-- Menú de Opciones y Bots -->
+                <div class="relative group">
+                    <button class="bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 shadow whitespace-nowrap">
+                        ⚙️ Opciones ▾
+                    </button>
+                    <div class="absolute right-0 mt-1 w-56 bg-white border border-slate-200 rounded-xl shadow-2xl py-2 hidden group-hover:block z-50 divide-y divide-slate-100 text-slate-800">
+                        <button onclick="enviarExcelPorCorreo()" class="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-slate-100 flex items-center gap-2.5 transition text-indigo-700">
+                            📧 Enviar Reporte por Correo
+                        </button>
+                        <button onclick="openWhatsAppModal()" class="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-slate-100 flex items-center gap-2.5 transition text-emerald-700">
+                            🤖 Escanear QR WhatsApp
+                        </button>
+                        
+                        <!-- Control de Canales -->
+                        <div class="px-4 py-3 border-t border-slate-200 mt-1 bg-slate-50">
+                            <div class="text-[10px] font-extrabold text-slate-400 mb-2 uppercase tracking-wider">Canales Activos</div>
+                            <div class="flex items-center justify-between py-1">
+                                <span class="text-xs font-semibold text-slate-700">💬 WhatsApp</span>
+                                <button id="btn-toggle-wsp" class="btn btn-sm px-2.5 py-1 text-xs font-bold rounded bg-emerald-600 text-white" onclick="toggleBotUnificado('whatsapp')">Encendido</button>
+                            </div>
+                            <div class="flex items-center justify-between py-1 mt-1">
+                                <span class="text-xs font-semibold text-slate-700">✈️ Telegram</span>
+                                <button id="btn-toggle-tg" class="btn btn-sm px-2.5 py-1 text-xs font-bold rounded bg-emerald-600 text-white" onclick="toggleBotUnificado('telegram')">Encendido</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
     </header>
 
     <main class="max-w-7xl mx-auto px-4 py-6 space-y-6">
 
-        <!-- Sección de Alertas Íntegra -->
+        <!-- Sección de Alertas Dinámicas Idéntica al General -->
         <section id="alertsSection" class="space-y-4 mb-4 hidden">
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end border-b border-slate-300 gap-2 pb-2">
                 <div class="flex gap-1 overflow-x-auto items-end w-full sm:w-auto">
@@ -140,17 +187,42 @@
             </div>
         </section>
 
-        <!-- Pestañas Principales -->
+        <!-- Pestañas de Proceso Idénticas al General -->
         <div class="flex border-b border-slate-300 gap-1 overflow-x-auto items-end">
-            <button type="button" id="tab_activosBtn" onclick="switchTab('activos')" class="tab-btn px-6 py-3 font-bold rounded-t-lg bg-white border-t-2 border-x border-slate-300 text-blue-700 shadow-sm transition">
-                ⚡ Exp. Activos <span id="count_activos">0</span>
+            <button id="tab_porLlegarBtn" onclick="switchTab('porLlegar')" class="tab-btn px-4 font-bold rounded-t-lg bg-white border-t-2 border-x border-slate-300 text-amber-700 shadow-sm transition min-w-[130px]">
+                <span class="text-xs font-bold flex items-center gap-1">🚢✈️ Por Llegar</span>
+                <span id="count_porLlegar" class="text-xl font-black mt-0.5 text-amber-600">0</span>
             </button>
-            <button type="button" id="tab_despachadosBtn" onclick="switchTab('despachados')" class="tab-btn px-6 py-3 font-bold rounded-t-lg bg-slate-200 text-slate-600 hover:bg-slate-300 transition">
-                ✅ Despachados <span id="count_despachados">0</span>
+            <button id="tab_porRegistrarBtn" onclick="switchTab('porRegistrar')" class="tab-btn px-4 font-bold rounded-t-lg bg-slate-200 text-slate-600 hover:bg-slate-300 transition min-w-[130px]">
+                <span class="text-xs font-bold flex items-center gap-1.5">Por Registrar</span>
+                <span id="count_porRegistrar" class="text-xl font-black mt-0.5">0</span>
+            </button>
+            <button id="tab_porReconocerBtn" onclick="switchTab('porReconocer')" class="tab-btn px-4 font-bold rounded-t-lg bg-slate-200 text-slate-600 hover:bg-slate-300 transition min-w-[130px]">
+                <span class="text-xs font-bold flex items-center gap-1">🔍 Por Reconocer</span>
+                <span id="count_porReconocer" class="text-xl font-black mt-0.5">0</span>
+            </button>
+            <button id="tab_porValidarBtn" onclick="switchTab('porValidar')" class="tab-btn px-4 font-bold rounded-t-lg bg-slate-200 text-slate-600 hover:bg-slate-300 transition min-w-[130px]">
+                <div class="flex items-center gap-1.5">
+                    <span class="text-[11px] font-bold">📋 Por Validar</span>
+                    <div class="flex flex-col gap-[2px] bg-slate-950 p-[2px] rounded shadow-inner border border-slate-700">
+                        <span id="semaforoRojo" class="w-1.5 h-1.5 rounded-full bg-slate-700 anim-red"></span>
+                        <span id="semaforoAmarillo" class="w-1.5 h-1.5 rounded-full bg-slate-700 anim-yellow"></span>
+                        <span id="semaforoVerde" class="w-1.5 h-1.5 rounded-full bg-slate-700 anim-green"></span>
+                    </div>
+                </div>
+                <span id="count_porValidar" class="text-xl font-black mt-0.5">0</span>
+            </button>
+            <button id="tab_porDespacharBtn" onclick="switchTab('porDespachar')" class="tab-btn px-4 font-bold rounded-t-lg bg-slate-200 text-slate-600 hover:bg-slate-300 transition min-w-[130px]">
+                <span class="text-xs font-bold flex items-center gap-1">🚚 Por Despachar</span>
+                <span id="count_porDespachar" class="text-xl font-black mt-0.5">0</span>
+            </button>
+            <button id="tab_despachadosBtn" onclick="switchTab('despachados')" class="tab-btn px-4 font-bold rounded-t-lg bg-slate-200 text-slate-600 hover:bg-slate-300 transition min-w-[130px]">
+                <span class="text-xs font-bold flex items-center gap-1">✅ Despachados</span>
+                <span id="count_despachados" class="text-xl font-black mt-0.5">0</span>
             </button>
         </div>
 
-        <!-- Tabla Principal -->
+        <!-- Tabla Principal Con Columnas Solicitadas -->
         <section class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden -mt-6 rounded-tl-none relative z-20">
             <div class="overflow-x-auto max-h-[600px] bg-white">
                 <table class="w-full text-left border-collapse text-xs whitespace-nowrap table-compact bg-white">
@@ -163,16 +235,17 @@
                             <th class="p-3">Proveedor</th>
                             <th class="p-3">Línea</th>
                             <th class="p-3">País Origen</th>
-                            <th class="p-3">Buque / Vuelo Origen</th>
+                            <th class="p-3">Buque / Vuelo Llegada</th>
                             <th class="p-3">AWB / BL</th>
-                            <th class="p-3">N.º Contenedor(es)</th>
-                            <th class="p-3">Peso BL (Kg)</th>
-                            <th class="p-3">Contenido según BL</th>
+                            <th class="p-3">Contenedores</th>
+                            <th class="p-3">Peso (Kg)</th>
+                            <th class="p-3">Contenido</th>
                             <th class="p-3 bg-cyan-900">ETA</th>
                             <th class="p-3 bg-amber-900">Fecha DAI</th>
                             <th class="p-3 bg-indigo-900">Vencimiento DAI</th>
-                            <th class="p-3 bg-blue-900">Fecha de Llegada</th>
-                            <th class="p-3 bg-emerald-900 col-despacho">Fecha Despacho</th>
+                            <th class="p-3 bg-blue-900">Llegada</th>
+                            <th class="p-3 bg-purple-900">Transmisión</th>
+                            <th class="p-3 bg-emerald-900 col-despacho">Despacho</th>
                         </tr>
                     </thead>
                     <tbody id="dataTableBody" class="divide-y divide-slate-200 bg-white">
@@ -184,9 +257,9 @@
 
     </main>
 
-    <!-- Modal Formulario Esencial -->
+    <!-- Modal Formulario Completo -->
     <div id="expModal" class="fixed inset-0 bg-black/60 z-50 hidden flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[92vh] flex flex-col my-auto">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[92vh] flex flex-col my-auto">
             
             <div class="bg-navy-900 text-white p-4 flex justify-between items-center rounded-t-2xl shrink-0">
                 <h3 id="modalTitle" class="font-bold text-lg">Registrar Expediente</h3>
@@ -196,7 +269,7 @@
             <form id="expForm" onsubmit="saveExp(event)" class="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
                 <input type="hidden" id="recordId">
             
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                         <label class="block text-xs font-semibold text-slate-600 mb-1">Modo de Transporte *</label>
                         <select id="modo_transporte" required class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white font-bold text-blue-900">
@@ -225,7 +298,7 @@
                         <input type="text" id="pais_origen" required class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Buque / Vuelo Origen *</label>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Buque o Vuelo de Llegada *</label>
                         <input type="text" id="buque_origen_vuelo" required class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
                     </div>
                     <div>
@@ -233,21 +306,21 @@
                         <input type="text" id="awb_bl" required class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">N.º Contenedor(es)</label>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Contenedores</label>
                         <input type="text" id="numero_contenedor" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Peso BL (Kg)</label>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Peso (Kg)</label>
                         <input type="number" step="0.01" id="peso_bl" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
                     </div>
                     <div class="sm:col-span-2">
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Contenido según BL</label>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Contenido</label>
                         <input type="text" id="contenido_segun_bl" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
                     </div>
 
                     <div>
                         <label class="block text-xs font-semibold text-cyan-700 mb-1">ETA</label>
-                        <input type="text" id="eta" placeholder="DD/MM/AAAA" maxlength="10" oninput="maskFecha(this)" onblur="validarFechaCompleta(this)" class="w-full px-3 py-2 border border-cyan-300 rounded-lg text-sm bg-cyan-50">
+                        <input type="text" id="eta_la_guaira" placeholder="DD/MM/AAAA" maxlength="10" oninput="maskFecha(this)" onblur="validarFechaCompleta(this)" class="w-full px-3 py-2 border border-cyan-300 rounded-lg text-sm bg-cyan-50">
                     </div>
                     <div>
                         <label class="block text-xs font-semibold text-amber-700 mb-1">Fecha DAI</label>
@@ -258,11 +331,15 @@
                         <input type="text" id="vencimiento_dai" placeholder="DD/MM/AAAA" maxlength="10" readonly class="w-full px-3 py-2 border border-indigo-300 rounded-lg text-sm bg-indigo-50">
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-blue-700 mb-1">Fecha de Llegada</label>
+                        <label class="block text-xs font-semibold text-blue-700 mb-1">Llegada</label>
                         <input type="text" id="fecha_llegada" placeholder="DD/MM/AAAA" maxlength="10" oninput="maskFecha(this)" onblur="validarFechaCompleta(this)" class="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm bg-blue-50">
                     </div>
-                    <div class="sm:col-span-2">
-                        <label class="block text-xs font-semibold text-emerald-700 mb-1">Fecha de Despacho (Archiva)</label>
+                    <div>
+                        <label class="block text-xs font-semibold text-purple-700 mb-1">Transmisión</label>
+                        <input type="text" id="fecha_transmision" placeholder="DD/MM/AAAA" maxlength="10" oninput="maskFecha(this)" onblur="validarFechaCompleta(this)" class="w-full px-3 py-2 border border-purple-300 rounded-lg text-sm bg-purple-50">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-emerald-700 mb-1">Despacho (Archiva)</label>
                         <input type="text" id="despacho" placeholder="DD/MM/AAAA" maxlength="10" oninput="maskFecha(this)" onblur="validarFechaCompleta(this)" class="w-full px-3 py-2 border border-emerald-300 rounded-lg text-sm bg-emerald-50">
                     </div>
                 </div>
@@ -303,8 +380,25 @@
         </div>
     </div>
 
-    <!-- Script Principal Completo y Con Forzar Alertas -->
-    <!-- Script Principal Completo y Con Forzar Alertas Corregido -->
+    <!-- MODAL DE WHATSAPP / QR CODE EN LA NUBE -->
+    <div id="whatsappModal" class="fixed inset-0 bg-black/60 z-50 hidden flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full flex flex-col my-auto p-6 text-center space-y-4">
+            <div class="flex justify-between items-center border-b pb-3">
+                <h3 class="font-bold text-lg text-slate-900">🤖 Conexión WhatsApp (Nube)</h3>
+                <button type="button" onclick="closeWhatsAppModal()" class="text-slate-400 hover:text-slate-700 text-2xl font-bold px-2">&times;</button>
+            </div>
+            <div id="wa-status-container" class="space-y-3">
+                <p id="wa-status-text" class="text-sm font-semibold text-slate-600">Consultando estado del bot...</p>
+                <div id="wa-qr-box" class="flex flex-col items-center justify-center space-y-2" style="display: none;">
+                    <p class="text-xs text-slate-500">Escanee este código QR con su aplicación de WhatsApp:</p>
+                    <img id="wa-qr-img" src="" alt="Código QR WhatsApp" class="max-w-[240px] h-auto border-4 border-slate-100 rounded-xl shadow-md" />
+                </div>
+            </div>
+            <button onclick="closeWhatsAppModal()" class="w-full bg-slate-800 hover:bg-slate-900 text-white py-2.5 rounded-xl text-xs font-bold transition">Cerrar</button>
+        </div>
+    </div>
+
+    <!-- Script Principal SOTO ADUANAS con Lógica General Idéntica -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
         import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
@@ -314,15 +408,14 @@
         const COLLECTION_NAME = "expedientes";
 
         let allRecords = [];
-        let currentTab = 'activos';
+        let currentTab = 'porLlegar';
         let subTabAlertaActual = 'operativas';
 
-        // Lista de campos requeridos para el formulario y guardado
         const fieldsList = [
             "modo_transporte", "num_expediente", "cliente", "proveedor", "linea",
             "pais_origen", "buque_origen_vuelo", "awb_bl", "numero_contenedor",
-            "peso_bl", "contenido_segun_bl", "eta", "fecha_registro_dai",
-            "vencimiento_dai", "fecha_llegada", "despacho"
+            "peso_bl", "contenido_segun_bl", "eta_la_guaira", "fecha_registro_dai", 
+            "vencimiento_dai", "fecha_llegada", "fecha_transmision", "despacho"
         ];
 
         async function inicializarConfiguracion() {
@@ -346,119 +439,106 @@
         }
         inicializarConfiguracion();
 
-        // Función para forzar las alertas formateadas verticalmente con la fecha ETA al final
-       window.forzarAlertasServidor = async function() {
-    // Verificamos si tenemos registros globales cargados en memoria
-    if (!allRecords || allRecords.length === 0) {
-        alert("⚠️ No hay registros cargados en el sistema.");
-        return;
-    }
+        const estadosBots = {
+            whatsapp: localStorage.getItem('canal_wsp') !== 'false',
+            telegram: localStorage.getItem('canal_tg') !== 'false'
+        };
 
-    let textosAlertas = [];
-    const today = new Date();
-    today.setHours(0,0,0,0);
-
-    let expSet = new Set();
-    let blSet = new Set();
-    let contSet = new Set();
-
-    // Recorremos todos los registros para evaluar y recopilar TODAS las alertas activas de ambas pestañas
-    allRecords.forEach(rec => {
-        const expVal = (rec.num_expediente || "").trim().toLowerCase();
-        const blVal = (rec.awb_bl || "").trim().toLowerCase();
-        const contRaw = (rec.numero_contenedor || "").trim();
-        let contenedoresList = contRaw ? contRaw.split(',').map(c => c.trim().toLowerCase()).filter(Boolean) : [];
-
-        const fechaEtaStr = rec.eta_la_guaira || rec.eta || rec.fecha_llegada || 'S/N';
-        const expName = rec.num_expediente || 'S/N';
-        const clientName = rec.cliente || 'S/C';
-        const esMaritimo = (rec.modo_transporte || "").toLowerCase().includes("aéreo") ? "✈️ AÉREO" : "🚢 MARÍTIMO";
-
-        // 1. Duplicados
-        if (expVal) {
-            if (expSet.has(expVal)) {
-                textosAlertas.push(`❗ EXPEDIENTE DUPLICADO\n• Vía: ${esMaritimo}\n• Expediente: ${rec.num_expediente}\n• 👤 Cliente: ${clientName}\n• Estado: Repetido en el sistema\n• 📅 Fecha ETA: ${fechaEtaStr}`);
-            }
-            expSet.add(expVal);
-        }
-        if (blVal && blVal !== 's/n') {
-            if (blSet.has(blVal)) {
-                textosAlertas.push(`❗ B/L O AWB DUPLICADO\n• Vía: ${esMaritimo}\n• B/L / AWB: ${rec.awb_bl}\n• 👤 Cliente: ${clientName}\n• Estado: Ya está usado\n• 📅 Fecha ETA: ${fechaEtaStr}`);
-            }
-            blSet.add(blVal);
-        }
-
-        contenedoresList.forEach(contVal => {
-            if (contSet.has(contVal)) {
-                textosAlertas.push(`❗ CONTENEDOR DUPLICADO\n• Contenedor: ${contVal.toUpperCase()}\n• 👤 Cliente: ${clientName}\n• Estado: Repetido\n• 📅 Fecha ETA: ${fechaEtaStr}`);
-            }
-            contSet.add(contVal);
+        document.addEventListener("DOMContentLoaded", () => {
+            actualizarEstiloBot('whatsapp', estadosBots.whatsapp);
+            actualizarEstiloBot('telegram', estadosBots.telegram);
         });
 
-        if (rec.despacho) return;
+        window.toggleBotUnificado = function(tipo) {
+            estadosBots[tipo] = !estadosBots[tipo];
+            localStorage.setItem(`canal_${tipo === 'whatsapp' ? 'wsp' : 'tg'}`, estadosBots[tipo]);
+            actualizarEstiloBot(tipo, estadosBots[tipo]);
+        };
 
-        // 2. Art. 45 LOA (Abandono Legal)
-        const dAbandonoLocal = parseFechaLocal(rec.fecha_abandono_legal);
-        if (dAbandonoLocal) {
-            const diffAbandono = Math.round((dAbandonoLocal - today) / (1000 * 60 * 60 * 24));
-            if (diffAbandono >= 0 && diffAbandono <= 3) {
-                const txtAbandono = diffAbandono === 0 ? "¡VENCE HOY!" : `Faltan ${diffAbandono}d`;
-                textosAlertas.push(`🚨 ALERTA ABANDONO LEGAL\n• Vía: ${esMaritimo}\n• Exp: ${expName}\n• 👤 Cliente: ${clientName}\n• ⏳ Plazo: ${txtAbandono} (${rec.fecha_abandono_legal})\n• 📅 Fecha ETA: ${fechaEtaStr}`);
+        function actualizarEstiloBot(tipo, activo) {
+            const btn = document.getElementById(tipo === 'whatsapp' ? 'btn-toggle-wsp' : 'btn-toggle-tg');
+            if (!btn) return;
+            if (activo) {
+                btn.className = "btn btn-sm px-2.5 py-1 text-xs font-bold rounded bg-emerald-600 text-white";
+                btn.innerText = "Encendido";
+            } else {
+                btn.className = "btn btn-sm px-2.5 py-1 text-xs font-bold rounded bg-rose-600 text-white";
+                btn.innerText = "Apagado";
             }
         }
 
-        // 3. Art. 177 LOA (Multa / Vencimiento DAI)
-        if (rec.vencimiento_dai) {
-            const dVenc = parseFechaLocal(rec.vencimiento_dai);
-            if (dVenc) {
-                const diffVenc = Math.round((dVenc - today) / (1000 * 60 * 60 * 24));
-                if (diffVenc < 0) {
-                    textosAlertas.push(`🚨 ALERTA ART. 177 NUMERAL 9 DE LA  LOA (MULTA / VENCIDO)\n• Vía: ${esMaritimo}\n• Exp: ${expName}\n• 👤 Cliente: ${clientName}\n• ⏳ Estado: Vencido el ${rec.vencimiento_dai}\n• 📅 Fecha ETA: ${fechaEtaStr}`);
-                } else if (diffVenc >= 0 && diffVenc <= 4) {
-                    const txtVenc = diffVenc === 0 ? "¡VENCE HOY!" : `Faltan ${diffVenc}d`;
-                    textosAlertas.push(`⚠️ DAI PRÓXIMA A VENCER (RIESGO MULTA ART. 177 NUM 9 LOA)\n• Vía: ${esMaritimo}\n• Exp: ${expName}\n• 👤 Cliente: ${clientName}\n• ⏳ Vencimiento: ${txtVenc} (${rec.vencimiento_dai})\n• 📅 Fecha ETA: ${fechaEtaStr}`);
+        window.openWhatsAppModal = function() {
+            document.getElementById("whatsappModal").classList.remove("hidden");
+            verificarEstadoWhatsApp();
+        };
+
+        window.closeWhatsAppModal = function() {
+            document.getElementById("whatsappModal").classList.add("hidden");
+        };
+
+        async function verificarEstadoWhatsApp() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/whatsapp/estado`);
+                const data = await res.json();
+                
+                const statusText = document.getElementById('wa-status-text');
+                const qrBox = document.getElementById('wa-qr-box');
+                const qrImg = document.getElementById('wa-qr-img');
+
+                if (data.ready) {
+                    statusText.innerHTML = "🟢 <strong class='text-emerald-600'>Bot de WhatsApp Conectado y Operativo</strong>";
+                    qrBox.style.display = 'none';
+                } else if (data.estado === "ESPERANDO_ESCANEO" && data.qrCodeDataUrl) {
+                    statusText.innerHTML = "🟡 <strong class='text-amber-600'>Escanee el código QR</strong>";
+                    qrImg.src = data.qrCodeDataUrl;
+                    qrBox.style.display = 'flex';
+                } else {
+                    statusText.innerHTML = "🔴 <strong class='text-rose-600'>Desconectado / Inicializando...</strong>";
+                    qrBox.style.display = 'none';
                 }
+            } catch (err) {
+                console.error("Error consultando estado de WhatsApp:", err);
             }
         }
 
-        // 4. ETA Próximo
-        if (rec.eta || rec.eta_la_guaira) {
-            const dEta = parseFechaLocal(rec.eta || rec.eta_la_guaira);
-            if (dEta) {
-                const diffDays = Math.round((dEta - today) / (1000 * 60 * 60 * 24));
-                if (diffDays >= 0 && diffDays <= 5) {
-                    const txt = diffDays === 0 ? "¡LLEGA HOY!" : `Faltan ${diffDays}d`;
-                    textosAlertas.push(`🚢 ETA PRÓXIMO\n• Vía: ${esMaritimo}\n• Exp: ${expName}\n• 👤 Cliente: ${clientName}\n• ⏳ Tiempo: ${txt}\n• 📅 Fecha ETA: ${fechaEtaStr}`);
+        window.forzarAlertasServidor = async function() {
+            if (!allRecords || allRecords.length === 0) {
+                alert("⚠️ No hay registros cargados en el sistema.");
+                return;
+            }
+
+            if (!confirm("¿Desea disparar y forzar las alertas operativas activas a través de los canales configurados?")) return;
+
+            try {
+                const canalesSeleccionados = {
+                    whatsapp: estadosBots.whatsapp,
+                    telegram: estadosBots.telegram
+                };
+
+                const response = await fetch(`${BACKEND_URL}/api/alertas/forzar`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ canales: canalesSeleccionados })
+                });
+
+                const data = await response.json();
+                if (response.ok && data.success) {
+                    alert("✅ ¡Alertas forzadas y enviadas con éxito a los canales activos!");
+                } else {
+                    alert("⚠️ Respuesta del servidor: " + (data.message || "Procesado con avisos"));
                 }
+            } catch (err) {
+                alert("❌ Error al conectar con el servidor: " + err.message);
             }
         }
-    });
 
-    if (textosAlertas.length === 0) {
-        alert("⚠️ No hay alertas activas en el sistema para enviar.");
-        return;
-    }
-
-    const mensajeConsolidado = "🚨 <b>ALERTAS OPERATIVAS Y ETA - SOTO ADUANAS</b> (Forzado Manual)\n\n" + textosAlertas.join("\n\n--------------------\n\n");
-
-    if (!confirm(`¿Desea enviar un total de ${textosAlertas.length} alerta(s) activa(s) (sumando ambas pestañas) a Telegram ahora mismo?`)) return;
-
-    try {
-        const res = await fetch(`${BACKEND_URL}/api/notificar`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mensaje: mensajeConsolidado })
-        });
-        const data = await res.json();
-        if (res.ok && data.success) {
-            alert("✅ Alertas enviadas a Telegram con éxito.");
-        } else {
-            alert("⚠️ Respuesta del servidor: " + (data.message || "Procesado con avisos"));
-        }
-    } catch (err) {
-        alert("❌ Error al conectar con el servidor: " + err.message);
-    }
-}
+        window.enviarExcelPorCorreo = async function() {
+            let correoGuardado = localStorage.getItem('ultimo_correo_destinatario') || "importacionesepga@gmail.com";
+            let destinatario = prompt("Ingresa el correo electrónico del destinatario:", correoGuardado);
+            if (!destinatario || !destinatario.includes("@")) return;
+            localStorage.setItem('ultimo_correo_destinatario', destinatario.trim());
+            alert("Preparando envío de correo...");
+        };
 
         window.maskFecha = function(input) {
             let v = input.value.replace(/\D/g, "");
@@ -503,16 +583,54 @@
                 snapshot.forEach((docSnap) => {
                     allRecords.push({ id: docSnap.id, ...docSnap.data() });
                 });
+                updateTabCounters(allRecords);
                 filterData();
                 checkAlerts(allRecords);
             });
         }
 
+        function getExpCategory(rec) {
+            const hasDespacho = Boolean(rec.despacho && rec.despacho.trim() !== "");
+            const hasValidacion = Boolean(rec.validacion && rec.validacion.trim() !== "");
+            const hasReconocimiento = Boolean(rec.reconocimiento && rec.reconocimiento.trim() !== "");
+            const hasTransmision = Boolean(rec.fecha_transmision && rec.fecha_transmision.trim() !== "");
+            const hasLlegada = Boolean(rec.fecha_llegada && rec.fecha_llegada.trim() !== "");
+
+            if (hasDespacho) return 'despachados';
+            if (hasValidacion) return 'porDespachar';
+            if (hasReconocimiento) return 'porValidar';
+            if (hasTransmision) return 'porReconocer';
+            if (hasLlegada) return 'porRegistrar';
+            return 'porLlegar';
+        }
+
         window.switchTab = function(tabName) {
             currentTab = tabName;
-            document.getElementById("tab_activosBtn").className = "tab-btn px-6 py-3 font-bold rounded-t-lg " + (tabName === 'activos' ? "bg-white border-t-2 border-x border-slate-300 text-blue-700 shadow-sm" : "bg-slate-200 text-slate-600 hover:bg-slate-300") + " transition";
-            document.getElementById("tab_despachadosBtn").className = "tab-btn px-6 py-3 font-bold rounded-t-lg " + (tabName === 'despachados' ? "bg-white border-t-2 border-x border-slate-300 text-blue-700 shadow-sm" : "bg-slate-200 text-slate-600 hover:bg-slate-300") + " transition";
+            const tabs = ['porLlegar', 'porRegistrar', 'porReconocer', 'porValidar', 'porDespachar', 'despachados'];
+            tabs.forEach(t => {
+                const btn = document.getElementById(`tab_${t}Btn`);
+                if (btn) {
+                    btn.className = "tab-btn px-4 font-bold rounded-t-lg " + (t === tabName ? "bg-white border-t-2 border-x border-slate-300 text-blue-700 shadow-sm" : "bg-slate-200 text-slate-600 hover:bg-slate-300") + " transition min-w-[130px]";
+                }
+            });
             filterData();
+        }
+
+        function updateTabCounters(data) {
+            let counts = { porLlegar: 0, porRegistrar: 0, porReconocer: 0, porValidar: 0, porDespachar: 0, despachados: 0 };
+            let semaforoEstado = 'verde';
+            const today = new Date();
+            today.setHours(0,0,0,0);
+
+            data.forEach(r => {
+                const cat = getExpCategory(r);
+                if (counts[cat] !== undefined) counts[cat]++;
+            });
+
+            for (let k in counts) {
+                const el = document.getElementById(`count_${k}`);
+                if (el) el.innerText = counts[k];
+            }
         }
 
         window.switchSubTabAlertas = function(tipo) {
@@ -531,99 +649,33 @@
             const today = new Date();
             today.setHours(0,0,0,0);
 
-            let expSet = new Set();
-            let blSet = new Set();
-            let contSet = new Set();
-
             data.forEach(rec => {
-                const expVal = (rec.num_expediente || "").trim().toLowerCase();
-                const blVal = (rec.awb_bl || "").trim().toLowerCase();
-                const contRaw = (rec.numero_contenedor || "").trim();
-                let contenedoresList = contRaw ? contRaw.split(',').map(c => c.trim().toLowerCase()).filter(Boolean) : [];
-
-                const fechaEtaStr = rec.eta_la_guaira || rec.eta || rec.fecha_llegada || 'S/N';
-                const expName = rec.num_expediente || 'S/N';
-                const clientName = rec.cliente || 'S/C';
-                const esMaritimo = (rec.modo_transporte || "").toLowerCase().includes("aéreo") ? "✈️ AÉREO" : "🚢 MARÍTIMO";
-
-                if (expVal) {
-                    if (expSet.has(expVal)) {
-                        alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>❗ EXPEDIENTE DUPLICADO:</b> Vía: ${esMaritimo} | Exp: <b>${rec.num_expediente}</b> | 👤 Cliente: <b>${clientName}</b> | Estado: Repetido | 📅 ETA: <b>${fechaEtaStr}</b>` });
-                    }
-                    expSet.add(expVal);
-                }
-                if (blVal && blVal !== 's/n') {
-                    if (blSet.has(blVal)) {
-                        alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>❗ B/L O AWB DUPLICADO:</b> Vía: ${esMaritimo} | BL: <b>${rec.awb_bl}</b> | 👤 Cliente: <b>${clientName}</b> | Estado: Ya usado | 📅 ETA: <b>${fechaEtaStr}</b>` });
-                    }
-                    blSet.add(blVal);
-                }
-
-                contenedoresList.forEach(contVal => {
-                    if (contSet.has(contVal)) {
-                        alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>❗ CONTENEDOR DUPLICADO:</b> Contenedor: <b>${contVal.toUpperCase()}</b> | 👤 Cliente: <b>${clientName}</b> | Estado: Repetido | 📅 ETA: <b>${fechaEtaStr}</b>` });
-                    }
-                    contSet.add(contVal);
-                });
-
                 if (rec.despacho) return;
 
-                // Validación Artículo 45 LOA (Abandono Legal)
-                const dAbandonoLocal = parseFechaLocal(rec.fecha_abandono_legal);
-                if (dAbandonoLocal) {
-                    const diffAbandono = Math.round((dAbandonoLocal - today) / (1000 * 60 * 60 * 24));
-                    if (diffAbandono >= 0 && diffAbandono <= 3) {
-                        const txtAbandono = diffAbandono === 0 ? "¡VENCE HOY!" : `Faltan ${diffAbandono}d`;
-                        alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>🚨 ABANDONO LEGAL:</b> Vía: ${esMaritimo} | Exp: <b>${expName}</b> | 👤 Cliente: <b>${clientName}</b> | ⏳ Plazo: ${txtAbandono} (${rec.fecha_abandono_legal}) | 📅 ETA: <b>${fechaEtaStr}</b>` });
-                    }
-                }
+                const expName = rec.num_expediente || 'S/N';
+                const clientName = rec.cliente || 'S/C';
 
-                // Validación Artículo 177 LOA (Multa / Vencimiento DAI)
                 if (rec.vencimiento_dai) {
                     const dVenc = parseFechaLocal(rec.vencimiento_dai);
                     if (dVenc) {
                         const diffVenc = Math.round((dVenc - today) / (1000 * 60 * 60 * 24));
                         if (diffVenc < 0) {
-                            alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>🚨 MULTA ART. 177 NUM 9 DE LA LOA: </b> Vía: ${esMaritimo} | Exp: <b>${expName}</b> | 👤 Cliente: <b>${clientName}</b> | ⏳ Vencido el ${rec.vencimiento_dai} | 📅 ETA: <b>${fechaEtaStr}</b>` });
-                        } else if (diffVenc >= 0 && diffVenc <= 4) {
-                            const txtVenc = diffVenc === 0 ? "¡VENCE HOY!" : `Faltan ${diffVenc}d`;
-                            alertsList.push({ categoria: 'operativa', type: 'warning', text: `<b>⚠️ RIESGO MULTA ART. 177 NUM 9 DE LA LOA:</b> Vía: ${esMaritimo} | Exp: <b>${expName}</b> | 👤 Cliente: <b>${clientName}</b> | ⏳ Vencimiento: ${txtVenc} (${rec.vencimiento_dai}) | 📅 ETA: <b>${fechaEtaStr}</b>` });
-                        }
-                    }
-                }
-
-                if (rec.eta || rec.eta_la_guaira) {
-                    const dEta = parseFechaLocal(rec.eta || rec.eta_la_guaira);
-                    if (dEta) {
-                        const diffDays = Math.round((dEta - today) / (1000 * 60 * 60 * 24));
-                        if (diffDays >= 0 && diffDays <= 5) {
-                            const txt = diffDays === 0 ? "¡LLEGA HOY!" : `Faltan ${diffDays}d`;
-                            alertsList.push({ categoria: 'eta', type: 'warning', text: `<b>🚢 ETA PRÓXIMO:</b> Vía: ${esMaritimo} | Exp: <b>${expName}</b> | 👤 Cliente: <b>${clientName}</b> | ⏳ ${txt} | 📅 ETA: <b>${fechaEtaStr}</b>` });
+                            alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>🚨 VENCIDO / MULTA ART. 177:</b> Exp: <b>${expName}</b> | Cliente: <b>${clientName}</b> | Venció el ${rec.vencimiento_dai}` });
                         }
                     }
                 }
             });
 
-            let filtradas = alertsList.filter(a => {
-                if (subTabAlertaActual === 'eta') return a.categoria === 'eta';
-                return a.categoria === 'operativa';
-            });
-
-            document.getElementById("count_alertasEta").innerText = alertsList.filter(a => a.categoria === 'eta').length;
-            document.getElementById("count_alertasOp").innerText = alertsList.filter(a => a.categoria === 'operativa').length;
+            document.getElementById("count_alertasOp").innerText = alertsList.length;
 
             if (alertsList.length > 0) {
                 section.classList.remove("hidden");
-                if (filtradas.length > 0) {
-                    filtradas.forEach(alert => {
-                        const div = document.createElement("div");
-                        div.className = `p-2.5 rounded-lg border flex items-center justify-between gap-2 text-xs ${alert.type === 'danger' ? 'bg-red-50 border-red-200 text-red-700 font-semibold' : 'bg-amber-50 border-amber-200 text-amber-800'}`;
-                        div.innerHTML = `<span>${alert.text}</span>`;
-                        container.appendChild(div);
-                    });
-                } else {
-                    container.innerHTML = `<div class="text-center py-3 text-slate-400">No hay alertas activas en esta categoría.</div>`;
-                }
+                alertsList.forEach(alert => {
+                    const div = document.createElement("div");
+                    div.className = `p-2.5 rounded-lg border flex items-center justify-between gap-2 text-xs ${alert.type === 'danger' ? 'bg-red-50 border-red-200 text-red-700 font-semibold' : 'bg-amber-50 border-amber-200 text-amber-800'}`;
+                    div.innerHTML = `<span>${alert.text}</span>`;
+                    container.appendChild(div);
+                });
             } else {
                 section.classList.add("hidden");
             }
@@ -635,28 +687,16 @@
             if (!tbody) return;
             tbody.innerHTML = "";
 
-            let activosCount = 0;
-            let despachadosCount = 0;
-
             const filtered = allRecords.filter(r => {
-                const hasDespacho = Boolean(r.despacho && r.despacho.trim() !== "");
-                if (hasDespacho) despachadosCount++; else activosCount++;
-
-                const matchesTab = currentTab === 'despachados' ? hasDespacho : !hasDespacho;
+                const matchesTab = getExpCategory(r) === currentTab;
                 const matchesQuery = query === "" || Object.values(r).some(val => String(val).toLowerCase().includes(query));
                 return matchesTab && matchesQuery;
             });
 
-            const elActivos = document.getElementById("count_activos");
-            const elDespachados = document.getElementById("count_despachados");
-            const elRecordCount = document.getElementById("recordCount");
-
-            if (elActivos) elActivos.innerText = activosCount;
-            if (elDespachados) elDespachados.innerText = despachadosCount;
-            if (elRecordCount) elRecordCount.innerText = `${filtered.length} registros mostrados`;
+            document.getElementById("recordCount").innerText = `${filtered.length} registros mostrados`;
 
             if (filtered.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="17" class="text-center py-8 text-slate-400">No hay registros en esta vista.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="18" class="text-center py-8 text-slate-400">No hay registros en esta sección.</td></tr>`;
                 return;
             }
 
@@ -679,10 +719,11 @@
                     <td class="p-3">${rec.numero_contenedor || ''}</td>
                     <td class="p-3">${rec.peso_bl ? Number(rec.peso_bl).toFixed(2) : ''}</td>
                     <td class="p-3">${rec.contenido_segun_bl || ''}</td>
-                    <td class="p-3 font-semibold text-cyan-800 bg-cyan-50/50">${rec.eta || ''}</td>
+                    <td class="p-3 font-semibold text-cyan-800 bg-cyan-50/50">${rec.eta_la_guaira || ''}</td>
                     <td class="p-3 font-semibold text-amber-800 bg-amber-50/50">${rec.fecha_registro_dai || ''}</td>
                     <td class="p-3 font-semibold text-indigo-800 bg-indigo-50/50">${rec.vencimiento_dai || ''}</td>
                     <td class="p-3 font-semibold text-blue-800 bg-blue-50/50">${rec.fecha_llegada || ''}</td>
+                    <td class="p-3 font-semibold text-purple-800 bg-purple-50/50">${rec.fecha_transmision || ''}</td>
                     <td class="p-3 font-semibold text-emerald-800 bg-emerald-50/50 col-despacho">${rec.despacho || ''}</td>
                 `;
                 tbody.appendChild(tr);
@@ -753,7 +794,7 @@
                     <td class="p-3 font-bold col-exp">${rec.num_expediente}</td>
                     <td class="p-3">${rec.cliente}</td>
                     <td class="p-3">${rec.awb_bl}</td>
-                    <td class="p-3">${rec.eta || ''}</td>
+                    <td class="p-3">${rec.eta_la_guaira || ''}</td>
                     <td class="p-3">${rec.fecha_llegada || ''}</td>
                     <td class="p-3 text-emerald-700 font-bold col-despacho">${rec.despacho}</td>
                 `;
