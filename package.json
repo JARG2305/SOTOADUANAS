@@ -1,16 +1,17 @@
 {
   "name": "logistatus-pro",
   "version": "1.0.0",
-  "description": "",
+  "description": "Sistema de Gestión Logística y Aduanas",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.0",
     "dotenv": "^16.4.5",
-    "express": "^5.2.1",
-    "firebase-admin": "^14.5.0",
-    "node-cron": "^4.6.0",
-    "xlsx": "^0.18.5"
+    "express": "^4.19.2",
+    "node-cron": "^3.0.3",
+    "qrcode": "^1.5.3",
+    "xlsx-js-style": "^1.2.0"
   }
 }
