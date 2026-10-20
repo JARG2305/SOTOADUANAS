@@ -640,12 +640,14 @@
             checkAlerts(allRecords);
         }
 
-        function checkAlerts(data) {
+       function checkAlerts(data) {
             const container = document.getElementById("alertsContainer");
             const section = document.getElementById("alertsSection");
             if (!container || !section) return;
             container.innerHTML = "";
-            let alertsList = [];
+            
+            let alertasEta = [];
+            let alertasOperativas = [];
             const today = new Date();
             today.setHours(0,0,0,0);
 
@@ -654,28 +656,60 @@
 
                 const expName = rec.num_expediente || 'S/N';
                 const clientName = rec.cliente || 'S/C';
+                const fechaEtaRaw = rec.fecha_llegada || rec.eta_la_guaira || '';
 
+                // 1. Evaluación de Alertas ETA (próximas a llegar en 5 días)
+                if (fechaEtaRaw) {
+                    const dArriboObj = parseFechaLocal(fechaEtaRaw);
+                    const hasLlegadaRegistrada = Boolean(rec.fecha_llegada && rec.fecha_llegada.trim() !== "");
+                    
+                    if (dArriboObj && !hasLlegadaRegistrada) {
+                        const diffLlegadaDays = Math.round((dArriboObj - today) / (1000 * 60 * 60 * 24));
+                        if (diffLlegadaDays >= 0 && diffLlegadaDays <= 5) {
+                            const textoDias = diffLlegadaDays === 0 ? "¡LLEGA HOY!" : `Faltan ${diffLlegadaDays}d`;
+                            alertasEta.push({
+                                type: 'info',
+                                text: `✈🚢 <b>ETA PRÓXIMO:</b> Exp: <b>${expName}</b> | Cliente: <b>${clientName}</b> | ⏳ <b>${textoDias}</b> (${fechaEtaRaw})`
+                            });
+                        }
+                    }
+                }
+
+                // 2. Evaluación de Alertas Operativas (DAI Vencida)
                 if (rec.vencimiento_dai) {
                     const dVenc = parseFechaLocal(rec.vencimiento_dai);
                     if (dVenc) {
                         const diffVenc = Math.round((dVenc - today) / (1000 * 60 * 60 * 24));
                         if (diffVenc < 0) {
-                            alertsList.push({ categoria: 'operativa', type: 'danger', text: `<b>🚨 VENCIDO / MULTA ART. 177:</b> Exp: <b>${expName}</b> | Cliente: <b>${clientName}</b> | Venció el ${rec.vencimiento_dai}` });
+                            alertasOperativas.push({
+                                type: 'danger',
+                                text: `<b>🚨 VENCIDO / MULTA ART. 177:</b> Exp: <b>${expName}</b> | Cliente: <b>${clientName}</b> | Venció el ${rec.vencimiento_dai}`
+                            });
                         }
                     }
                 }
             });
 
-            document.getElementById("count_alertasOp").innerText = alertsList.length;
+            // Actualizar contadores en los botones de pestañas
+            document.getElementById("count_alertasEta").innerText = alertasEta.length;
+            document.getElementById("count_alertasOp").innerText = alertasOperativas.length;
 
-            if (alertsList.length > 0) {
+            // Seleccionar qué lista mostrar según la sub-pestaña activa en la web
+            let listaAMostrar = subTabAlertaActual === 'eta' ? alertasEta : alertasOperativas;
+
+            if (alertasEta.length > 0 || alertasOperativas.length > 0) {
                 section.classList.remove("hidden");
-                alertsList.forEach(alert => {
-                    const div = document.createElement("div");
-                    div.className = `p-2.5 rounded-lg border flex items-center justify-between gap-2 text-xs ${alert.type === 'danger' ? 'bg-red-50 border-red-200 text-red-700 font-semibold' : 'bg-amber-50 border-amber-200 text-amber-800'}`;
-                    div.innerHTML = `<span>${alert.text}</span>`;
-                    container.appendChild(div);
-                });
+                
+                if (listaAMostrar.length === 0) {
+                    container.innerHTML = `<div class="p-3 text-slate-400 text-center">No hay alertas en esta sub-pestaña.</div>`;
+                } else {
+                    listaAMostrar.forEach(alert => {
+                        const div = document.createElement("div");
+                        div.className = `p-2.5 rounded-lg border flex items-center justify-between gap-2 text-xs ${alert.type === 'danger' ? 'bg-red-50 border-red-200 text-red-700 font-semibold' : 'bg-blue-50 border-blue-200 text-blue-800 font-semibold'}`;
+                        div.innerHTML = `<span>${alert.text}</span>`;
+                        container.appendChild(div);
+                    });
+                }
             } else {
                 section.classList.add("hidden");
             }
