@@ -256,9 +256,6 @@ function generarExcelClienteBuffer(expedientesData) {
 // ==========================================
 // 1. ENVÍO DINÁMICO CON EXCEL ESTILIZADO (VÍA GOOGLE APPS SCRIPT)
 // ==========================================
-// ==========================================
-// 1. ENVÍO DINÁMICO CON EXCEL ESTILIZADO (VÍA GOOGLE APPS SCRIPT)
-// ==========================================
 async function enviarCorreoConGoogleScriptDinamico(correoDestino, asuntoCorreo, mensajeCorreo, expedientesData = []) {
     try {
         const urlAppsScript = process.env.googleScriptUrl;
@@ -379,6 +376,42 @@ async function procesarTrackingExpedientes() {
 cron.schedule('0 6,14 * * *', async () => {
     await procesarTrackingExpedientes();
 }, { timezone: "America/Caracas" });
+const cheerio = require('cheerio');
+
+// Función que entra a la web de rastreo de manera automatizada
+async function consultarEtaPorWebScraping(codigoTracking) {
+    try {
+        // Ejemplo de URL pública de consulta (puedes adaptarla a la naviera principal que utilices)
+        // Muchas navieras permiten consultar mediante URLs directas con parámetros GET
+        const urlBusqueda = `https://www.ejemplo-naviera.com/tracking?search=${encodeURIComponent(codigoTracking)}`;
+
+        const response = await fetch(urlBusqueda, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+        });
+
+        if (!response.ok) return null;
+        
+        const html = await response.text();
+        const $ = cheerio.load(html);
+
+        // 🔍 AQUÍ EXTRAES EL DATO: Indicas el selector CSS exacto donde la web de la naviera muestra la ETA
+        // Por ejemplo, si en su HTML la fecha está en <span class="eta-date">2026-11-20</span>:
+        const textoEta = $('.eta-date').text().trim(); 
+
+        if (textoEta) {
+            // Limpias y formateas la fecha al formato DD/MM/YYYY que usa tu sistema
+            // (Asumiendo que viene en YYYY-MM-DD o similar)
+            return textoEta; 
+        }
+
+        return null;
+    } catch (error) {
+        console.error(`❌ Error haciendo scraping para el código ${codigoTracking}:`, error.message);
+        return null;
+    }
+}
 // ==========================================
 // MÓDULO DE SEGUIMIENTO Y TRACKING AUTOMÁTICO (CON FILTRO DE LLEGADA)
 // ==========================================
@@ -405,36 +438,33 @@ async function obtenerCodigoDeRastreo(expediente) {
 
 async function procesarTrackingExpedientes() {
     try {
-        console.log("🔄 [TRACKING AUTO] Iniciando verificación automática de expedientes activos...");
+        console.log("🔄 [SCRAPING AUTO] Iniciando búsqueda de ETAs en la web...");
         const expedientes = await obtenerExpedientesFirestore();
         if (!expedientes || expedientes.length === 0) return;
 
-        // 📌 FILTRO ESTRICTO: Omitir si ya tiene FECHA DE LLEGADA registrada o si ya fue DESPACHADO
+        // Filtramos solo los expedientes activos (sin fecha de llegada ni despacho)
         const expedientesActivos = expedientes.filter(e => {
             const tieneLlegada = Boolean(e.fecha_llegada && String(e.fecha_llegada).trim() !== "");
             const estaDespachado = Boolean(e.despacho && String(e.despacho).trim() !== "");
             return !tieneLlegada && !estaDespachado;
         });
 
-        let actualizadosCount = 0;
-
         for (const exp of expedientesActivos) {
-            const datosTracking = await obtenerCodigoDeRastreo(exp);
+            const datosTracking = await obtenerCodigoDeRastreo(exp); // (Contenedor o B/L)
             if (!datosTracking) continue;
 
-            console.log(`🔍 Monitoreando Exp: ${exp.num_expediente} usando su ${datosTracking.tipo.toUpperCase()}: ${datosTracking.codigo}`);
+            console.log(`🌐 Rastreando en la web -> Exp: ${exp.num_expediente} (${datosTracking.tipo}: ${datosTracking.codigo})`);
 
-            // 📌 Aquí conectas tu lógica o función de consulta externa:
-            // const nuevaEta = await tuFuncionDeConsultaGratuita(datosTracking.codigo);
-            // 
-            /*
-            const etaActualRegistrada = exp.eta_la_guaira || "";
-            
-            if (nuevaEta && nuevaEta !== etaActualRegistrada) {
+            // 1. 🤖 EL BOT CONSULTA LA WEB DE LA NAVIERA AUTOMÁTICAMENTE
+            const nuevaEtaWeb = await consultarEtaPorWebScraping(datosTracking.codigo);
+            const etaActual = exp.eta_la_guaira || "";
+
+            // 2. Si encontró una fecha y es distinta a la que tienes guardada:
+            if (nuevaEtaWeb && nuevaEtaWeb !== etaActual) {
                 const recordId = exp.id;
                 if (!recordId) continue;
 
-                // 1. Actualizamos en Firebase Firestore
+                // 3. ☁️ ACTUALIZA AUTOMÁTICAMENTE EN FIREBASE (Firestore)
                 const urlUpdate = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/expedientes/${recordId}?updateMask.fieldPaths=eta_la_guaira`;
                 
                 const resPatch = await fetch(urlUpdate, {
@@ -442,34 +472,27 @@ async function procesarTrackingExpedientes() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         fields: {
-                            eta_la_guaira: { stringValue: nuevaEta }
+                            eta_la_guaira: { stringValue: nuevaEtaWeb }
                         }
                     })
                 });
 
                 if (resPatch.ok) {
-                    actualizadosCount++;
-                    
-                    // 2. 🚀 DISPARAR ALERTA AUTOMÁTICA POR WHATSAPP Y TELEGRAM
-                    const numExp = exp.num_expediente || 'S/N';
-                    const clienteExp = exp.cliente || 'S/C';
-                    const blContenedorExp = datosTracking.codigo;
-                    
-                    const mensajeAlerta = `🔄 *ETA ACTUALIZADA AUTOMÁTICAMENTE* 🚢\n\n` +
-                                          `📂 Exp: *${numExp}*\n` +
-                                          `👤 Cliente: *${clienteExp}*\n` +
-                                          `📦 B/L o Contenedor: *${blContenedorExp}*\n` +
-                                          `📅 Nueva ETA: *${nuevaEta}*`;
+                    // 4. 🚀 LANZA LA ALERTA A WHATSAPP Y TELEGRAM
+                    const mensajeAlerta = `🔄 *ETA ACTUALIZADA AUTOMÁTICAMENTE (WEB)* 🚢\n\n` +
+                                          `📂 Exp: *${exp.num_expediente || 'S/N'}*\n` +
+                                          `👤 Cliente: *${exp.cliente || 'S/C'}*\n` +
+                                          `📦 Código: *${datosTracking.codigo}*\n` +
+                                          `📅 Nueva ETA: *${nuevaEtaWeb}*`;
 
-                    await enviarAlertaMulticanal([mensajeAlerta], "ACTUALIZACIÓN DE TRACKING");
-                    console.log(`✅ [ETA ACTUALIZADA Y NOTIFICADA] Exp: ${numExp} | Nueva ETA: ${nuevaEta}`);
+                    await enviarAlertaMulticanal([mensajeAlerta], "ACTUALIZACIÓN WEB DE TRACKING");
+                    console.log(`✅ ETA actualizada con éxito para el expediente ${exp.num_expediente}`);
                 }
             }
-            */
         }
-        console.log(`🏁 [TRACKING AUTO] Ciclo completado. Total de expedientes revisados: ${expedientesActivos.length}`);
+        console.log(`🏁 [SCRAPING AUTO] Ciclo finalizado.`);
     } catch (error) {
-        console.error("❌ Error en procesarTrackingExpedientes:", error);
+        console.error("❌ Error en el proceso automático de scraping:", error);
     }
 }
 
